@@ -1,0 +1,8 @@
+# build products and fetched third-party sources never go into git
+/build/
+/.icap-js8-export
+/third_party/
+__pycache__/
+*.o
+*.elf
+*.APP

@@ -1,0 +1,18 @@
+Files in this directory that are copies of other people's work
+==============================================================
+
+digi_util.c, digi_util.h
+    Origin:    ICAP SDK, https://github.com/sq6emm/icap-sdk
+               commit 3e3af4c7181bde704deb7ce2cdd015d1c5a8e401 (2026-11-20),
+               apps/digi-common/digi_util.c and apps/digi-common/digi_util.h
+    Copyright: Copyright (c) 2026 Dawid SQ6EMM (stated in the SDK's apps/digi-common/README.md;
+               the two files themselves carry only the SPDX line)
+    Licence:   GPL-3.0-or-later
+    Changes:   none - both files are byte-identical to the SDK's at that commit
+               (the export tool of this project compares them when an SDK checkout is at hand).
+
+js8app.c is NOT a copy but a modified derivative of the SDK's apps/digi-common/digiapp.c
+(Copyright (c) 2026 Dawid SQ6EMM, GPL-3.0-or-later); what was taken over is listed at the top of
+that file.  Its two-slot scheduling (a finished capture is decoded while the next period is captured
+into the other slot) follows apps/wspr/wsprapp.c of the same SDK (same author, same licence).
+See also NOTICE.md in the repository root.
