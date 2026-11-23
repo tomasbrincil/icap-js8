@@ -2,6 +2,8 @@
 
 Thank you for looking. This is a small hobby project maintained by one person, Tomas Brincil OK1BT, with the code written by an AI coding assistant under his direction (see `AUTHORS.md`). Reports from real radios are worth more to it than anything else.
 
+**Please read this before opening an issue.** Bug reports and ideas are welcome and they are read. But the project is written by an AI assistant under one person's direction, in spare time, so please do not expect a fix or a feature on any schedule - many issues will stay open, and that is not a judgement on the report. If something matters to you, a fork or a pull request is the surest way, and you are very welcome to it.
+
 ## What helps most
 
 1. **Reports from a radio.** Which IC-705 version and firmware release, which build, what the app window showed, your `JS8PERF.TXT`. See "Reporting problems" in the README.

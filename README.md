@@ -2,6 +2,10 @@
 
 A JS8Call-compatible **receiver** (submode Normal, 15 s periods) that runs inside the IC-705 as an app for the ICAP loader of the custom firmware by Dawid SQ6EMM. It decodes JS8 frames from the radio's own audio, turns them into text, joins multi-frame messages and shows them on the radio's DECODE screen, with no computer attached.
 
+![JS8 DECODE screen on the IC-705: stations heard on 40 m](docs/img/js8-decode.jpg)
+
+*The DECODE screen of this build on an IC-705, stations heard on 40 m (7.078 MHz), 23 November 2026.*
+
 This release is **receive only**. The app contains no transmit code and no network code. Transmitting is on the [roadmap](ROADMAP.md), not in this repository.
 
 The code, the tests and the documentation were written by an AI coding assistant (Claude, by Anthropic) under the direction of Tomas Brincil OK1BT, who tested it on his radio. No human has reviewed the code line by line. See [How this was made](#how-this-was-made) and [`AUTHORS.md`](AUTHORS.md).
@@ -28,7 +32,11 @@ Date of this status: 23 November 2026.
 
 ## Photos
 
-None yet; photos of the DECODE screen and of the app window are to follow. `docs/img/README.md` lists what is planned.
+The DECODE screen is shown at the top of this page. The app window of the same build, a few minutes into the timed run:
+
+![The app window: settings in use, decode times, dictionary and totals](docs/img/js8-app-window.jpg)
+
+[Reading the screen](#reading-the-screen) explains the lines.
 
 ## Requirements
 
@@ -223,6 +231,8 @@ Layout: `src/` the app modules, `shell/` the loader binding and the ARM build sc
 See [`ROADMAP.md`](ROADMAP.md): transmit (heartbeat, CQ, directed messages), text entry with the radio's own keyboard, a terminal link, a generic ICAP host simulator if there is interest, a head-to-head comparison with JS8Call, and moving the dictionary out of the Apps folder.
 
 ## Reporting problems
+
+A word on expectations first, said with respect for your time: this is a hobby project, written by an AI assistant under my direction in my spare time. Bug reports and ideas are welcome and I read them, but please do not expect a fix or a feature on any schedule - many will stay open. If something matters to you, a fork or a pull request is the surest way, and you are very welcome to it.
 
 Use the issue tracker of this repository. Helpful in a report:
 
