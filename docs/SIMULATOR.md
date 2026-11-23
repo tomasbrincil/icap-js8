@@ -49,42 +49,43 @@ After `make fetch` (or with `ICAP_SDK` and `JS8_REF` pointing at your own copies
 make all sim dict
 
 # 1. a message as frames (js8mk is the test frame builder; -J: the dictionary files)
-./build/js8mk -c OK7AB -g JO70 -i -J build/sd "HELLO FROM THE SIMULATOR"
-#   cd24c512156978b85b2f28 6 1 OK7AB: HELLO
+# (Q7AB is a made-up call sign that cannot be issued; N0CALL below is the usual placeholder)
+./build/js8mk -c Q7AB -g JO70 -i -J build/sd "HELLO FROM THE SIMULATOR"
+#   ec58a242ad2f170b7f2164 6 1 Q7AB: HELLO
 #   f7062700767e14ffff5ae0 6 2 FROM THE SIMULATOR
 
 # 2. two periods of audio: frame 1 in period 0, frame 2 in period 1, 1500 Hz, -10 dB, with noise
 ./build/js8gen -o build/demo.wav -p 2 -n 300 -S 1 \
-    -s 1500,0.1,-10,xcd24c512156978b85b2f28,0,0 \
+    -s 1500,0.1,-10,xec58a242ad2f170b7f2164,0,0 \
     -s 1500,0.1,-10,xf7062700767e14ffff5ae0,0,1
 
 # 3. run the app on it
 mkdir -p build/demo-sd
-./build/js8sim -d build/demo-sd -J build/sd -c OK1ABC -T 20 build/demo.wav
+./build/js8sim -d build/demo-sd -J build/sd -c N0CALL -T 20 build/demo.wav
 ```
 
 Output of that run on our PC (the wall time and the decode times will differ on yours):
 
 ```
-D 1200 -10 1500 OK7AB: HELLO
+D 1200 -10 1500 Q7AB: HELLO
 D 1200 -10 1500 FROM THE SIMULATOR
-D 1200 -10 1500 = OK7AB: HELLO FROM THE
+D 1200 -10 1500 = Q7AB: HELLO FROM THE
 D      SIMULATOR
-W0 JS8 RX OK1ABC 450-2550 Hz
+W0 JS8 RX N0CALL 450-2550 Hz
 W1 ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000
 W2 no errors
-W3 last 120030 0d 8ms t0 b0
-W4 r0 f1 s7 d0 u0 p0
-W5 R0 F2 S8 D1 U0 P1
+W3 last 120030 0d 13ms t0 b0
+W4 r0 f1 s9 d0 u0 p0
+W5 R0 F2 S12 D3 U0 P1
 W6 dict 5740 rd 3 fr 2 msg 1 me 0
-W7 c0/3 k0 g0 av9 mx13 T2 B6
-# sim rc=0 file=build/demo.wav samples=240000 (30.0 s) virtual=51.5 s wall=0.11 s k=1 q=0
-# files opens=20 failed=3 max_open=1 still_open=0 nofd=0 badname=0 read=51045 B written=782401 B
-# audio calls=6447 overruns=0 app_gaps=0 yields=4 max_step_ms=1.23
+W7 c0/3 k0 g0 av16 mx21 T2 B6
+# sim rc=0 file=build/demo.wav samples=240000 (30.0 s) virtual=51.5 s wall=0.19 s k=1 q=0
+# files opens=20 failed=3 max_open=1 still_open=0 nofd=0 badname=0 read=51045 B written=782142 B
+# audio calls=6841 overruns=0 app_gaps=0 yields=4 max_step_ms=2.09
 # decode_out lines=4 over40=0 popups=0 tx_calls=0 net_calls=0 win_over40=0
 # app periods=3 frames=2 msgs=1 to_me=0 skipped=0 notes=0 raw=0 popup_busy=0 log_err=0
-# decode ms last=8 avg=9 max=13 (virtual) arena peak=177840 of 189824 (heap 245760, shell 55936)
-# dict head_words=5740 head_bytes=34645 opens=3 bytes=38757 max_lookup=34661 cache_hits=0 head_hits=10
+# decode ms last=13 avg=16 max=21 (virtual) arena peak=177840 of 189824 (heap 245760, shell 55936)
+# dict head_words=5740 head_bytes=34645 opens=3 bytes=38757 max_lookup=34661 cache_hits=0 head_hits=9
 ```
 
 `build/demo-sd/` then holds what the app would have left on the card: the two capture files, `JS8LOG.TXT`, `JS8MSG.TXT` and `JS8PERF.TXT`. The decode times printed here are PC times and say nothing about the radio.
@@ -116,5 +117,5 @@ To try it with your app as things stand: copy `tests/js8sim.c`, replace the incl
 ## What the simulator got wrong or could not tell us
 
 - **Speed.** For this release a timing model predicted 2.4 s for a busy recording and 0.2 s for an empty band; the radio measured 2.7 s on average and 1.1 s for an empty period (`docs/PERFORMANCE.md`). PC-derived times are a rough guess.
-- **Screen width.** The simulator accepted DECODE rows of up to 63 characters, the limit of the service. On the radio rows wrap at about 40 characters when the mini-scope is shown; the app and the simulator's check were changed to 40.
+- **Screen width.** The simulator accepted DECODE rows of up to 63 characters, the limit of the service. On the radio, rows longer than about 40 characters wrapped when the mini-scope was shown (seen with an earlier build, which printed longer rows); the app and the simulator's check were changed to 40.
 - **The app list and the rescan.** That the Apps list showed at most 8 apps and that the rescan was slow with about 260 extra files in the folder was seen on the owner's radio only; the simulator has no model of either.

@@ -1,10 +1,10 @@
 # icap-js8 - a JS8 receiver app for the Icom IC-705 (ICAP)
 
+![The JS8 DECODE screen of an Icom IC-705 on 7.078 MHz: four decoded JS8 rows below the band scope, the mini-scope to their right](docs/img/js8-decode.jpg)
+
+*The released build on the author's IC-705, 23 November 2026, 7.078 MHz: stations heard on 40 m, decoded by the radio itself. More under [Photos](#photos).*
+
 A JS8Call-compatible **receiver** (submode Normal, 15 s periods) that runs inside the IC-705 as an app for the ICAP loader of the custom firmware by Dawid SQ6EMM. It decodes JS8 frames from the radio's own audio, turns them into text, joins multi-frame messages and shows them on the radio's DECODE screen, with no computer attached.
-
-![JS8 DECODE screen on the IC-705: stations heard on 40 m](docs/img/js8-decode.jpg)
-
-*The DECODE screen of this build on an IC-705, stations heard on 40 m (7.078 MHz), 23 November 2026.*
 
 This release is **receive only**. The app contains no transmit code and no network code. Transmitting is on the [roadmap](ROADMAP.md), not in this repository.
 
@@ -28,15 +28,8 @@ Date of this status: 23 November 2026.
 | Transmit | Not in this release | See [`ROADMAP.md`](ROADMAP.md). |
 | Other IC-705 versions (E, ...) | Not tried | Only the J version was used. |
 | IC-9700 | Not supported by this build | The app is packed for the IC-705 only (`--models 1` in `shell/build.sh`). |
-| `make fetch` over the network, a build on a second machine | Not verified | See [`docs/BUILDING.md`](docs/BUILDING.md). |
-
-## Photos
-
-The DECODE screen is shown at the top of this page. The app window of the same build, a few minutes into the timed run:
-
-![The app window: settings in use, decode times, dictionary and totals](docs/img/js8-app-window.jpg)
-
-[Reading the screen](#reading-the-screen) explains the lines.
+| `make fetch` over the network | Verified once | 23 November 2026, on the development machine: the SDK at the pinned commit and the seven reference files were fetched, the checksums matched and the app built from them was byte-identical. |
+| A build on a second machine | Not verified | See [`docs/BUILDING.md`](docs/BUILDING.md). |
 
 ## Requirements
 
@@ -44,11 +37,11 @@ The DECODE screen is shown at the top of this page. The app window of the same b
 - **Radio versions tried: the J (Japan) version only.**
 - **An SD card** in the radio. The app, its dictionary and its files live in `\IC-705\Apps\`.
 - **The radio's clock must be accurate, to within about a second.** JS8 periods start at :00, :15, :30 and :45, and the decoder looks for a frame only from about 2.2 s before to 2.4 s after its expected start (`docs/PROTOCOL.md`), so a clock that is off by more than about 2 s loses every decode. The easy way is to let the radio set its time from its GPS receiver; the setting is in the radio's time menu (see the Icom manual; we do not quote a menu label we did not check). The tolerance is taken from the code, it was not measured on the radio.
-- **A receive filter that passes the search band.** The app looks for signals between 450 and 2550 Hz of audio (the default; `flo=` / `fhi=`). A narrower filter in the data mode cuts stations off at the edges. Which filter setting the owner's radio had during the test was not recorded, and no filter setting was compared.
+- **A receive filter that passes the search band.** The app looks for signals between 450 and 2550 Hz of audio (the default; `flo=` / `fhi=`). A narrower filter in the data mode cuts stations off at the edges. The photo at the top shows `FIL1` selected; the width that `FIL1` had on the owner's radio was not recorded, and no filter setting was compared.
 
 ## Quick install on the SD card
 
-Read [Safety and legal](#safety-and-legal) before installing the custom firmware. This repository ships **no binaries**: you build the app and generate the dictionary yourself ([`docs/BUILDING.md`](docs/BUILDING.md)).
+Read [Safety and legal](#safety-and-legal) before installing the custom firmware. This repository ships **no program binaries**: you build the app and generate the dictionary yourself ([`docs/BUILDING.md`](docs/BUILDING.md)).
 
 You need `make`, a C compiler, `python3`, `git`, `curl` and an `arm-none-eabi-gcc` bare-metal toolchain (we used Arm GNU Toolchain 12.2.rel1). `make dist` builds the app, so it stops with a message when the ARM compiler is missing.
 
@@ -58,7 +51,7 @@ make dist      # build/dist/IC-705/Apps/ and build/icap-js8-sdcard.zip
                # if the ARM compiler is not in PATH: make dist CROSS=/path/to/bin/arm-none-eabi-
 ```
 
-`make fetch` has not been run over the network by us (see the status table); if it fails, `docs/BUILDING.md` says how to supply the files by hand.
+`make fetch` was run over the network once (23 November 2026); if it fails for you, `docs/BUILDING.md` says how to supply the files by hand.
 
 1. **Make room in the app list first.** On the owner's radio the Apps list showed at most 8 apps; further `.APP` files on the card did not appear in it. The SDK's app table alone names nine apps (Q65, FT8, JT4, PI4, WSPR, FETCH, CLOCK, SPEED, SYSINFO) and the firmware brings `APRS.APP`, so a card that holds the whole bundle may have no free place and `JS8` may not show up. If that happens:
    - **move** the `.APP` file of one or two apps you do not use from `\IC-705\Apps\` to your computer, so that you can put them back later;
@@ -84,13 +77,13 @@ Things to know:
 
 ## Configuration: JS8.CFG
 
-Optional text file in the Apps folder: `key=value` entries separated by blanks or line ends. There is no comment syntax. The app reads the first 399 bytes, once, at start. Put `scope=` on a line of its own: that key is read by the loader, the SDK describes `.CFG` files as one `key=value` per line, and a line of its own is the only form that was tried on the radio.
+Optional text file in the Apps folder: `key=value` entries separated by blanks or line ends. There is no comment syntax. The app reads the first 399 bytes, once, at start. Put `scope=` on a line of its own: this app does not parse that key, the SDK describes `.CFG` files as one `key=value` per line, and a line of its own is the only form that was tried on the radio.
 
 The parser is strict and silent: keys are lower case, there must be no blank on either side of `=`, and the file must be plain ASCII without a byte-order mark (some Windows editors add one; it hides the first key). An entry it does not understand is ignored without a note. Lines 0 and 1 of the app window show the call, the band and the tuning that were really applied; look there after changing the file. (Simulator.)
 
 | Key | Meaning | Default |
 |---|---|---|
-| `scope=450-2550` | read by the **loader**, not by the app: span of the mini-scope for the mode. Worked on the radio as a line of its own, as in `sd/JS8.CFG`; no other form was tried. | - |
+| `scope=450-2550` | span of the mini-scope for the mode. **Not parsed by this app.** On the radio this line, on a line of its own as in `sd/JS8.CFG`, set the span; no other form was tried. That the loader or the firmware reads it from the file is our inference from those two facts: the SDK documentation lists `scope=` among the keys of its reference decoders and calls such keys app conventions. | - |
 | `flo=`, `fhi=` | search range for the audio frequency of the lowest tone, Hz. A wider range works but needs two passes over the band and takes longer; a range narrower than 100 Hz is refused. | 450, 2550 |
 | `call=` | own call sign, used when the radio has none set | the radio's |
 | `groups=` | group calls marked as "to my group" in the message log, e.g. `groups=@ALLCALL,@OK` | none |
@@ -130,14 +123,14 @@ Three ready-made settings are in `sd/presets/`. To use one, copy it to the card 
 
 ### DECODE rows
 
-Every row is at most 40 characters, because longer rows wrap on the radio when the mini-scope is shown.
+Every row is at most 40 characters, because longer rows wrap on the radio when the mini-scope is shown: rows longer than about 40 characters did so with an earlier build, which printed longer rows.
 
 Example (simulator run with a generated two-frame message):
 
 ```
-1200 -10 1500 OK7AB: HELLO
+1200 -10 1500 Q7AB: HELLO
 1200 -10 1500 FROM THE SIMULATOR
-1200 -10 1500 = OK7AB: HELLO FROM THE
+1200 -10 1500 = Q7AB: HELLO FROM THE
      SIMULATOR
 ```
 
@@ -151,7 +144,7 @@ Example (simulator run with a generated two-frame message):
 | `>` before the text | a complete message addressed to the own call; it also raises a pop-up (at most one per period, none for a message with a wrong checksum) |
 | a row starting with blanks | continuation of a text that did not fit the row |
 
-The SNR is the decoder's own estimate. It has not been compared with what JS8Call reports for the same signal.
+`Q7AB` is a made-up call sign that cannot be issued (no call sign series starts with Q); `N0CALL` below is the usual placeholder. The SNR is the decoder's own estimate. It has not been compared with what JS8Call reports for the same signal.
 
 ### The app window (8 lines of 40 characters, times in ms)
 
@@ -159,16 +152,39 @@ The DECODE screen shows decodes only; the app's status is in its own window. To 
 
 | Line | Example | Content |
 |---|---|---|
-| 0 | `JS8 RX OK1ABC 450-2550 Hz` | own call, search band |
+| 0 | `JS8 RX N0CALL 450-2550 Hz` | own call, search band |
 | 1 | `ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000` | tuning in use: minscore, nsync/ns34, passes, iters, sub, shift, wide, stream, budget |
 | 2 | `no errors` | the last note or error |
-| 3 | `last 120030 0d 8ms t0 b0` | last period: frames, decode time, candidates tried, BP runs; `CUT` = ended by the hard limit, `BUD` = ended by `budget=` |
-| 4 | `r0 f1 s7 d0 u0 p0` | last period per stage: capture read, FFT, sync search, decoding, subtraction, post (text and logs) |
-| 5 | `R0 F2 S8 D1 U0 P1` | running maxima of line 4 |
+| 3 | `last 120030 0d 13ms t0 b0` | last period: frames, decode time, candidates tried, BP runs; `CUT` = ended by the hard limit, `BUD` = ended by `budget=` |
+| 4 | `r0 f1 s9 d0 u0 p0` | last period per stage: capture read, FFT, sync search, decoding, subtraction, post (text and logs) |
+| 5 | `R0 F2 S12 D3 U0 P1` | running maxima of line 4 |
 | 6 | `dict 5740 rd 3 fr 2 msg 1 me 0` | dictionary words in memory, SD reads, frames, messages, messages to me |
-| 7 | `c0/3 k0 g0 av9 mx13 T2 B6` | periods ended early (by the hard limit or by `budget=`) / periods, skipped periods, audio gaps, average and maximum decode time, maxima of tried candidates and BP runs; `LOGERR` first after a failed log write |
+| 7 | `c0/3 k0 g0 av16 mx21 T2 B6` | periods ended early (by the hard limit or by `budget=`) / periods, skipped periods, audio gaps, average and maximum decode time, maxima of tried candidates and BP runs; `LOGERR` first after a failed log write |
 
-The examples are from a run in the PC simulator (`docs/SIMULATOR.md`), not from the radio: the format is the same, the times are PC times.
+The examples are from a run in the PC simulator (`docs/SIMULATOR.md`), not from the radio: the format is the same, the times are PC times. The same window on the radio is under [Photos](#photos).
+
+### Photos
+
+Both photos show the released build - the `JS8.APP` that this source tree builds - on the author's IC-705 on 23 November 2026, receiving on 7.078 MHz (40 m) at 14:37 local time (UTC+1). Metadata was removed from the files; [`docs/img/README.md`](docs/img/README.md) says how that is checked.
+
+**The DECODE screen** (the picture at the top of this page). Four rows decoded in the minute 14:36: stations heard on 40 m. Every row has the form described under [DECODE rows](#decode-rows): start of the period (hhmm), signal-to-noise ratio in dB, audio frequency in Hz, text; `HB` is the screen's short form of `HEARTBEAT`. The rows are in the 40-column format, so none of them wraps next to the mini-scope on the right. Above them are the radio's own band scope and waterfall; the mode tile reads `JS8`. The radio was receiving: the meter shows a received signal. The `TX` symbol at the top left of the status bar, the small `TX` under the band scope and the `TX MEM` key are drawn by the radio and its firmware, not by this app, which has no transmit code; what the outlined symbol stands for we did not look up. The mode tile has no red frame; the SDK says that an armed beacon is shown by a red frame on the emission button.
+
+![The app window of JS8.APP on the IC-705: eight status lines](docs/img/js8-app-window.jpg)
+
+**The app window** (how to open it: [The app window](#the-app-window-8-lines-of-40-characters-times-in-ms)). The eight lines between the title bar and the bottom bar are written by the app; this is what each field in the photo means, taken from `shell/js8app.c`:
+
+| Line | In the photo | Meaning |
+|---|---|---|
+| 0 | `JS8 RX OK1BT 450-2550 Hz` | the own call sign in use (the author's) and the search band: lowest tone between 450 and 2550 Hz of audio |
+| 1 | `ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000` | the decoder tuning in use: `minscore=10`, `nsync=7` / `ns34=10`, `passes=31`, `iters=30`, `sub=1`, `shift=1`, `wide=1`, `stream=1`, `budget=8000` ms. These are the defaults (`DEFAULT.CFG`). |
+| 2 | `no errors` | no note and no error has been raised since the app started |
+| 3 | `last 143700 0d 1118ms t1 b2` | the last period, the one that began at 14:37:00 by the radio's clock: `0d` no frame decoded, `1118ms` the decode took 1118 ms, `t1` one sync candidate was tried, `b2` two belief-propagation runs. No `CUT` or `BUD` follows: the period was not ended early. |
+| 4 | `r212 f364 s316 d15 u0 p3` | where the time of that period went, in ms: `r` reading the capture back from the card 212, `f` FFT (the waterfall) 364, `s` sync search 316, `d` decoding (soft bits and belief propagation) 15, `u` subtraction of decoded signals 0, `p` post-processing (text and logs) 3 |
+| 5 | `R1601 F2132 S1552 D992 U839 P242` | the largest value each of those six stages has reached in any period since the start; each is its own maximum, they need not come from the same period |
+| 6 | `dict 5740 rd 1 fr 16 msg 16 me 0` | `dict 5740` dictionary words held in memory (the complete head table, `JSCHEAD.BIN`); `rd 1` dictionary files opened on the card so far - one, the load of that table at start; `fr 16` frames decoded since the start; `msg 16` messages closed (complete, or ended by a timeout); `me 0` messages addressed to the own call |
+| 7 | `c0/26 k0 g0 av2746 mx7990 T21 B77` | `c0/26` none of the 26 periods since the start was ended early; `k0` no period skipped; `g0` no gap in the audio capture; `av2746` average decode time 2746 ms; `mx7990` longest decode 7990 ms; `T21` most candidates tried in one period; `B77` most belief-propagation runs in one period |
+
+The title bar (`JS8 - running`) and the bottom bar (`EXIT: hide (keeps running)`) are not written by this app. The photo is one moment on one radio: 26 periods are six and a half minutes of listening. The status table speaks of a timed run of 35 periods, the photo shows the counters after 26. Whether the photo was taken earlier in that same run was not written down; the average, the maximum and the time of an empty period in the photo (2746, 7990 and 1118 ms) round to the figures of the table.
 
 ### Files the app writes into the Apps folder
 
@@ -192,8 +208,8 @@ The logs contain the call signs heard on the air. The archive is a ring of `keep
 - **8 apps in the list and a slow rescan** of the Apps folder, as seen on one radio; see "Quick install".
 - **Firmware features of a decoder mode that this app does not use.** The firmware offers every decoder mode more than this app takes up. The following comes from the app's source code and the SDK documentation; what the radio shows when you try was not recorded.
   - *No PSKReporter spots.* The app never writes the firmware's `@SPOT` file, so nothing is reported, whatever PSKREPORT is set to. The SDK's own decoders do report.
-  - *DECODE > SET is ignored.* The app does not read `@MODECFG`, where the firmware hands over the settings made there (SUBMODE, PSKREPORT, a search range). Use `JS8.CFG`.
-  - *Arming the beacon does nothing.* A long press of the mode tile arms the firmware's beacon for a decoder mode (the SDK: a red frame on the emission button). This app has no transmit code and never asks for a transmission, so nothing is sent.
+  - *DECODE > SET is ignored.* The app does not read `@MODECFG`, where the firmware hands over the settings made there (the SDK names SUBMODE and PSKREPORT). Use `JS8.CFG`.
+  - *With the beacon armed, this app still sends nothing.* A long press of the mode tile arms the firmware's beacon for a decoder mode, and the firmware then shows a red frame on the emission button (the SDK). That is the firmware's doing and it happens with this app too. The app has no transmit code, never reads the beacon state and never asks for a transmission, so nothing is sent.
   - *Tapping a decoded row does nothing.* The QSO mode of the SDK's FT8, Q65 and JT4 apps starts from such a tap; this app does not read the taps.
 - **SD card writes.** Every 15 s period is stored on the card before it is decoded (as the SDK's reference decoders do): one capture file of about 234 kB per period, which is about 56 MB per hour or 1.3 GB per day of listening, written over the same two files again and again, plus `JS8PERF.TXT` and the logs. `perf=0` saves one small file write per period. The figures are arithmetic from the capture size, not a measurement; keep them in mind before leaving the app on for days.
 - **A message that is being received when the app is left** is closed as incomplete.
@@ -232,7 +248,7 @@ See [`ROADMAP.md`](ROADMAP.md): transmit (heartbeat, CQ, directed messages), tex
 
 ## Reporting problems
 
-A word on expectations first, said with respect for your time: this is a hobby project, written by an AI assistant under my direction in my spare time. Bug reports and ideas are welcome and I read them, but please do not expect a fix or a feature on any schedule - many will stay open. If something matters to you, a fork or a pull request is the surest way, and you are very welcome to it.
+A word from the maintainer, Tomas OK1BT: "This is a hobby project, written by an AI assistant under my direction in my spare time. Bug reports and ideas are welcome and I read them, but please do not expect a fix or a feature on any schedule - many will stay open. If something matters to you, a fork or a pull request is the surest way, and you are very welcome to it."
 
 Use the issue tracker of this repository. Helpful in a report:
 
@@ -248,8 +264,8 @@ Problems with the firmware or the loader itself belong to the firmware project, 
 
 - **The idea, the direction and the testing on the radio** are by Tomas Brincil OK1BT. He set the goals and the rules, installed the builds on his own IC-705, ran them on the air and reported what the radio really did.
 - **The code, the tests and the documentation were written by Claude**, Anthropic's AI model, working as a coding assistant under his direction in November 2026. Separate runs of the assistant reviewed the work; the reviews found real faults, which were corrected. No human has reviewed the code line by line.
-- **It is built on Dawid SQ6EMM's ICAP loader, SDK and FT8 app.** The decoder is a fork of the SDK's FT8 decoder, the app shell reuses the capture loop of his `digiapp.c`, and two of his files are used unmodified. Through the FT8 decoder it also stands on ft8_lib by Kārlis Goba YL3JG.
-- **The protocol knowledge comes from the published sources of JS8Call** by Jordan Sherer KN4CRD and its contributors, and of the JS8Call-improved project: frame formats, tables and the dictionary. JS8 in turn stands on FT8 and the work of the WSJT-X team.
+- **It is built on Dawid SQ6EMM's ICAP loader, SDK and FT8 app.** The decoder is a fork of the SDK's FT8 decoder, the app shell reuses the capture loop of his `digiapp.c` and the two-slot scheduling of his `wsprapp.c`, and two of his files are used unmodified. Thank you, Dawid: without the loader and the published SDK there would be nothing here to run. Through the FT8 decoder it also stands on ft8_lib by Kārlis Goba YL3JG.
+- **The protocol knowledge comes from the published sources of JS8Call** by Jordan Sherer KN4CRD and its contributors, and of the JS8Call-improved project: frame formats, tables and the dictionary. JS8 in turn stands on FT8 and the work of the WSJT-X team. Thank you, Jordan, for JS8 and for publishing its sources, and thank you to the JS8Call-improved team for keeping them alive and for the test recordings.
 
 Who did what: [`AUTHORS.md`](AUTHORS.md). Whose work it builds on: [`CREDITS.md`](CREDITS.md). None of the people named there has reviewed or endorsed this project.
 

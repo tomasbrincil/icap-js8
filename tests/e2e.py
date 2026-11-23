@@ -248,13 +248,13 @@ def gen_wav(path, periods, sigs, noise=300, seed=7):
 def scenario_mix():
     """multi-frame compressed text, heartbeat + CQ, directed MSG to MYCALL (checksum), SNR report to MYCALL, Huffman text"""
     st = [  # (f0, dt, snr, call, text, identify, dict, first period, expected message, to-me, flags)
-        (700, 0.10, -8, 'OK2XYZ', 'HELLO WORLD, THIS IS A LONGER TEST MESSAGE FROM THE SIMULATOR. 73', True, True, 0,
-         'OK2XYZ: HELLO WORLD, THIS IS A LONGER TEST MESSAGE FROM THE SIMULATOR. 73', False, '-'),
-        (1100, -0.20, -12, 'OK7AB', 'HB JO70', False, True, 0, 'OK7AB: @HB HEARTBEAT JO70', False, '-'),
-        (1100, -0.20, -12, 'OK7AB', 'CQ CQ CQ JO70', False, True, 2, 'OK7AB: @ALLCALL CQ CQ CQ JO70', False, 'g'),
-        (1500, 0.30, -5, 'DL1ABC', 'OK1BT MSG MEET ME ON 40M AT 1900', False, True, 1, 'DL1ABC: OK1BT MSG MEET ME ON 40M AT 1900', True, '>c'),
-        (1900, 0.00, -10, 'G4XYZ', 'OK1BT SNR -12', False, True, 0, 'G4XYZ: OK1BT SNR -12', True, '>'),
-        (2300, 0.05, -6, 'SP5ABC', 'TESTING 1 2 3 DE SP5ABC K', False, False, 1, 'TESTING 1 2 3 DE SP5ABC K', False, '-'),
+        (700, 0.10, -8, 'Q2XYZ', 'HELLO WORLD, THIS IS A LONGER TEST MESSAGE FROM THE SIMULATOR. 73', True, True, 0,
+         'Q2XYZ: HELLO WORLD, THIS IS A LONGER TEST MESSAGE FROM THE SIMULATOR. 73', False, '-'),
+        (1100, -0.20, -12, 'Q7AB', 'HB JO70', False, True, 0, 'Q7AB: @HB HEARTBEAT JO70', False, '-'),
+        (1100, -0.20, -12, 'Q7AB', 'CQ CQ CQ JO70', False, True, 2, 'Q7AB: @ALLCALL CQ CQ CQ JO70', False, 'g'),
+        (1500, 0.30, -5, 'Q1ABC', 'OK1BT MSG MEET ME ON 40M AT 1900', False, True, 1, 'Q1ABC: OK1BT MSG MEET ME ON 40M AT 1900', True, '>c'),
+        (1900, 0.00, -10, 'Q4XYZ', 'OK1BT SNR -12', False, True, 0, 'Q4XYZ: OK1BT SNR -12', True, '>'),
+        (2300, 0.05, -6, 'N0CALL', 'TESTING 1 2 3 DE N0CALL K', False, False, 1, 'TESTING 1 2 3 DE N0CALL K', False, '-'),
     ]
     sigs, exp_frames, exp_msgs = [], [], []
     desc = []
@@ -361,7 +361,7 @@ def run_scenarios(skip_rt):
     s = Sim(wav, fresh('mix'))
     s.sane('mix')
     verify_run('mix', s, exp_frames, exp_msgs)
-    pops = ['JS8 message for OK1BT | G4XYZ: OK1BT SNR -12', 'JS8 message for OK1BT | DL1ABC: OK1BT MSG MEET ME ON | 40M AT 1900']
+    pops = ['JS8 message for OK1BT | Q4XYZ: OK1BT SNR -12', 'JS8 message for OK1BT | Q1ABC: OK1BT MSG MEET ME ON 40M | AT 1900']
     check('mix: each message to OK1BT raised exactly one popup, nothing else', sorted(s.popups) == sorted(pops), ' ; '.join(s.popups))
     check('mix: status view counts %d frames, 6 messages, 2 to me, dictionary loaded' % len(exp_frames),
           s.stat.get('app.frames') == len(exp_frames) and s.stat.get('app.msgs') == 6 and s.stat.get('app.to_me') == 2 and s.panel.get(6, '').startswith('dict '),
@@ -410,7 +410,7 @@ def run_scenarios(skip_rt):
     verify_run('mix, no dictionary: compressed frames shown raw as #<12 chars>, the rest as text', s, exp_frames, exp_msgs, nodict=True)
     nraw = sum(1 for f in exp_frames if f['type'] in (6, 7))
     check('mix, no dictionary: app runs, %d raw frames counted, panel says so, Huffman message still assembled' % nraw,
-          s.stat.get('app.raw') == nraw and s.panel.get(6, '').startswith('no dictionary') and any(m['text'] == 'TESTING 1 2 3 DE SP5ABC K' for m in s.mlines()),
+          s.stat.get('app.raw') == nraw and s.panel.get(6, '').startswith('no dictionary') and any(m['text'] == 'TESTING 1 2 3 DE N0CALL K' for m in s.mlines()),
           'raw=%s panel6="%s" panel2="%s"' % (s.stat.get('app.raw'), s.panel.get(6), s.panel.get(2)))
     block('`%s`' % s.cmd, s.out)
 
@@ -510,7 +510,7 @@ def run_scenarios(skip_rt):
     sys.path.insert(0, os.path.join(SRC, 'tests'))
     import rv_protocol as rv
     w_ = lambda t, sep=0: (rv.widx(t), sep)
-    f1 = rv.directed('DL1ABC', 'OK1BT', 31, None, 1)                                    # "DL1ABC: OK1BT " (first)
+    f1 = rv.directed('Q1ABC', 'OK1BT', 31, None, 1)                                    # "Q1ABC: OK1BT " (first)
     f2 = rv.jsc([w_(b'HELLO'), (69, 0), w_(b'N', 1)], 0)                                # "HELLO\nN "
     f3 = rv.jsc([w_(b'1'), w_(b'2'), w_(b'0', 1), w_(b'FAKE', 1), w_(b'NOTE')], 0)      # "120 FAKE NOTE"
     f4 = rv.jsc([(72, 0), w_(b'END')], 2)                                               # "\x1aEND" (last)
@@ -527,15 +527,15 @@ def run_scenarios(skip_rt):
     check('control characters: JS8LOG.TXT is 1 header + 4 R lines, JS8MSG.TXT 1 header + 1 M line, CR LF only at line ends, printable ASCII only; '
           'the message and the popup show the newline as a blank and 0x1A as "?"',
           textfile(raw_l, 'HRN') and textfile(raw_m, 'HM') and raw_l.count(b'\r\n') == 5 and raw_m.count(b'\r\n') == 2 and len(s.rlines()) == 4
-          and len(ml) == 1 and ml[0]['text'] == 'DL1ABC: OK1BT HELLO N 120 FAKE NOTE?END' and ml[0]['flags'] == '>'
-          and s.popups == ['JS8 message for OK1BT | DL1ABC: OK1BT HELLO N 120 FAKE | NOTE?END'] and all(all(32 <= ord(c) <= 126 for c in l) for l in s.d),
+          and len(ml) == 1 and ml[0]['text'] == 'Q1ABC: OK1BT HELLO N 120 FAKE NOTE?END' and ml[0]['flags'] == '>'
+          and s.popups == ['JS8 message for OK1BT | Q1ABC: OK1BT HELLO N 120 FAKE | NOTE?END'] and all(all(32 <= ord(c) <= 126 for c in l) for l in s.d),
           'M: %s ; popup: %s' % (' / '.join(m['text'] for m in ml), ' ; '.join(s.popups)))
     block('`cat -A` of JS8LOG.TXT and JS8MSG.TXT:', (raw_l + raw_m).decode('latin1').replace('\r', '^M').replace('\n', '$\n'))
 
     # B: log "append" without an append mode: rollover into archive files, restart
     md.append('')
     md.append('### Scenario "rollover": 8 heartbeat stations x 14 periods, run twice in the same folder')
-    calls = ['OK1AAA', 'OK2BBB', 'OK3CCC', 'OL4DDD', 'OM5EEE', 'DL6FFF', 'SP7GGG', 'OE8HHH']
+    calls = ['Q1AAA', 'Q2BBB', 'Q3CCC', 'Q4DDD', 'Q5EEE', 'Q6FFF', 'Q7GGG', 'Q8HHH']
     sg, hexes = [], []
     for i, c in enumerate(calls):
         fr = frames_of(c, 'HB JO70')

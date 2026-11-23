@@ -419,18 +419,25 @@ static uint64_t ref_pack50(const char *call)
 
 static void t_calls(void)
 {
-    static const char *std[] = { "OK1BT", "OK2XYZ", "K1ABC", "KN4CRD", "W1AW", "G4ABC", "9A1AA", "OK1BT/P",
-        "3X1A", "J1Y", "A1A", "VE3ABC", "2E0ABC", "K1A/P", "5B4AAA", "R1AA", 0 };
+    static const char *std[] = { "OK1BT", "Q2XYZ", "Q3ABC", "Q0AA", "Q1AW", "Q4ABC", "0A1AA", "OK1BT/P",
+        "3X1A", "Q1Y", "Q0A", "0B3ABC", "0E0ABC", "Q1A/P", "0B4AAA", "Q1AA", 0 };
+    /* Test calls: OK1BT is the author's own.  The others cannot be issued: no ITU series starts with Q or with 0
+     * (Q + digit: the packer reads Q + letter as 3X + letter, see below).  3X1A is kept for its shape: "3X" followed
+     * by a digit must NOT take the Guinea rule.  3DA0XY / 3XA1B exercise the two prefix rules of JS8Call
+     * varicode.cpp (packCallsign / unpackCallsign: "3DA0" <-> "3D0", "3X[A-Z]" <-> "Q[A-Z]"), which fire for these
+     * two prefixes only; the suffixes are arbitrary.
+     * Limit of this list: no call that cannot be issued has the commonest real shape, two letters + digit + three
+     * letters; the positions are covered separately (letter first: OK1BT; digit first and a 3-letter suffix: 0B3ABC). */
     /* JS8Call's base_callsign_pattern does not match these (no digit in 2nd/3rd place), so it
      * treats them as compound calls; the 28-bit packer still has the 3DA0/3X workarounds */
-    static const char *odd[] = { "3DA0XY", "3XA1B", "OL100A", 0 };
+    static const char *odd[] = { "3DA0XY", "3XA1B", "QL100A", 0 };
     static const char *cmp[] = { "VE3/OK1BT", "OK1BT/QRP", "OK1BT/MM", "@OKGROUP", "@TEST",
-        "KN4/CRD/QRP", "OK1BT/7", "HB9/OK1BT", "W1AW/KH6", "9A/OK1BT", "OL100A", "3DA0XY", 0 };
+        "Q0A/BCD/QRP", "OK1BT/7", "HB9/OK1BT", "Q1AW/KH6", "9A/OK1BT", "QL100A", "3DA0XY", 0 };
     /* the 50-bit layout has slash flags only at positions 3 and 7: these calls lose their
      * tail in JS8Call too (same 50-bit value as the 64-bit restatement of the source) */
-    static const char *trunc[] = { "9A/OK1BT/P", "EA8/G4ABC/P", 0 };
+    static const char *trunc[] = { "9A/OK1BT/P", "EA8/Q4ABC/P", 0 };
     static const char *bad[] = { "", "A", "HELLO", "WORLD", "12345", "A1", "CQ", "TOOLONGCALL1", "OK1BT.",
-        "KN4CRD/QRPP", 0 };
+        "0A4CRD/QRPP", 0 };
     char c[JS8_CALL_MAX];
     uint32_t v;
     uint16_t l[4];
@@ -446,7 +453,7 @@ static void t_calls(void)
     for (i = 0; odd[i]; i++) CHECK(js8_call_kind(odd[i]) == 2, "kind %s = %d", odd[i], js8_call_kind(odd[i]));
     CHECK(js8_call28_pack("3DA0XY", &v, &por) && js8_call28_unpack(v, por, c) && !strcmp(c, "3DA0XY"), "3DA0XY 28-bit");
     CHECK(js8_call28_pack("3XA1B", &v, &por) && js8_call28_unpack(v, por, c) && !strcmp(c, "3XA1B"), "3XA1B 28-bit");
-    CHECK(js8_call28_pack("OL100A", &v, &por) == 0, "OL100A has no 28-bit form");
+    CHECK(js8_call28_pack("QL100A", &v, &por) == 0, "QL100A has no 28-bit form");
     /* hand-computed value: "OK1BT " = ((((24*36+20)*10+1)*27+1)*27+19)*27+26 */
     js8_call28_pack("OK1BT", &v, &por);
     CHECK(v == ((((24u * 36 + 20) * 10 + 1) * 27 + 1) * 27 + 19) * 27 + 26, "OK1BT value %u", v);
@@ -565,49 +572,49 @@ static void t_frames(void)
     CHECK_STR(m.text, "OK1BT/QRP: ");
     CHECK_STR(m.from, "OK1BT/QRP"); CHECK_STR(m.grid, "JO70");
 
-    js8_pack_compound_directed("VE3/OK2XYZ", 14, 0, 0, 2, f);
+    js8_pack_compound_directed("VE3/Q2XYZ", 14, 0, 0, 2, f);
     CHECK(js8_msg_decode(f, 0, &m) == JS8_FT_COMPOUND_DIRECTED && m.cmd == 14, "cd type");
-    CHECK_STR(m.text, "VE3/OK2XYZ ACK ");
-    CHECK_STR(m.from, "<....>"); CHECK_STR(m.to, "VE3/OK2XYZ");
-    js8_pack_compound_directed("VE3/OK2XYZ", 25, 1, -12, 2, f);
+    CHECK_STR(m.text, "VE3/Q2XYZ ACK ");
+    CHECK_STR(m.from, "<....>"); CHECK_STR(m.to, "VE3/Q2XYZ");
+    js8_pack_compound_directed("VE3/Q2XYZ", 25, 1, -12, 2, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "VE3/OK2XYZ SNR -12 ");
+    CHECK_STR(m.text, "VE3/Q2XYZ SNR -12 ");
     CHECK(m.cmd == 25 && m.has_num && m.num == -12, "cd snr");
-    js8_pack_compound_directed("VE3/OK2XYZ", 29, 1, 5, 2, f);
+    js8_pack_compound_directed("VE3/Q2XYZ", 29, 1, 5, 2, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "VE3/OK2XYZ HEARTBEAT SNR +05 ");
+    CHECK_STR(m.text, "VE3/Q2XYZ HEARTBEAT SNR +05 ");
 
-    CHECK(js8_pack_directed("OK1BT", "OK2XYZ", 9, 0, 0, 1, f), "pack directed");
+    CHECK(js8_pack_directed("OK1BT", "Q2XYZ", 9, 0, 0, 1, f), "pack directed");
     CHECK(js8_msg_decode(f, 0, &m) == JS8_FT_DIRECTED, "dir type");
-    CHECK_STR(m.text, "OK1BT: OK2XYZ MSG ");
-    js8_pack_directed("OK1BT", "OK2XYZ", 25, 1, -12, 3, f);
+    CHECK_STR(m.text, "OK1BT: Q2XYZ MSG ");
+    js8_pack_directed("OK1BT", "Q2XYZ", 25, 1, -12, 3, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ SNR -12 ");
-    js8_pack_directed("OK1BT/P", "OK2XYZ/P", 29, 1, 7, 3, f);
+    CHECK_STR(m.text, "OK1BT: Q2XYZ SNR -12 ");
+    js8_pack_directed("OK1BT/P", "Q2XYZ/P", 29, 1, 7, 3, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "OK1BT/P: OK2XYZ/P HEARTBEAT SNR +07 ");
+    CHECK_STR(m.text, "OK1BT/P: Q2XYZ/P HEARTBEAT SNR +07 ");
     js8_pack_directed("OK1BT", "@ALLCALL", 0, 0, 0, 3, f);
     js8_msg_decode(f, 0, &m);
     CHECK_STR(m.text, "OK1BT: @ALLCALL SNR? ");
-    js8_pack_directed("OK1BT", "OK2XYZ", 5, 0, 0, 3, f);
+    js8_pack_directed("OK1BT", "Q2XYZ", 5, 0, 0, 3, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ> ");
-    js8_pack_directed("OK1BT", "OK2XYZ", 31, 0, 0, 1, f);
+    CHECK_STR(m.text, "OK1BT: Q2XYZ> ");
+    js8_pack_directed("OK1BT", "Q2XYZ", 31, 0, 0, 1, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ  ");
-    js8_pack_directed("<....>", "OK2XYZ", 14, 0, 0, 1, f);
+    CHECK_STR(m.text, "OK1BT: Q2XYZ  ");
+    js8_pack_directed("<....>", "Q2XYZ", 14, 0, 0, 1, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "<....>: OK2XYZ ACK ");
+    CHECK_STR(m.text, "<....>: Q2XYZ ACK ");
     /* non-SNR command with a number field: plain integer */
-    js8_pack_directed("OK1BT", "OK2XYZ", 14, 1, 5, 3, f);
+    js8_pack_directed("OK1BT", "Q2XYZ", 14, 1, 5, 3, f);
     js8_msg_decode(f, 0, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ ACK 5 ");
+    CHECK_STR(m.text, "OK1BT: Q2XYZ ACK 5 ");
     /* every command code in a directed frame */
     { int code; char exp[64];
       for (code = 0; code < 32; code++) {
-          js8_pack_directed("OK1BT", "OK2XYZ", code, 0, 0, 3, f);
+          js8_pack_directed("OK1BT", "Q2XYZ", code, 0, 0, 3, f);
           js8_msg_decode(f, 0, &m);
-          snprintf(exp, sizeof exp, "OK1BT: OK2XYZ%s ", js8_cmd_str(code));
+          snprintf(exp, sizeof exp, "OK1BT: Q2XYZ%s ", js8_cmd_str(code));
           CHECK(m.cmd == code, "cmd %d", code);
           CHECK_STR(m.text, exp);
       } }
@@ -874,7 +881,7 @@ static void t_asm(void)
 {
     static js8asm_t a;
     uint8_t fr[40][11], fr2[40][11];
-    js8_build_t cfg = { "OK2XYZ", "JN89", 0, &jsc };
+    js8_build_t cfg = { "Q2XYZ", "JN89", 0, &jsc };
     js8_msg_t m;
     uint32_t t = 1000;
     int n, n2, i;
@@ -884,17 +891,17 @@ static void t_asm(void)
     js8asm_init(&a, "OK1BT", "@ALLCALL @OK", emit, 0);
     CHECK(js8asm_to_me(&a, "OK1BT") == JS8ASM_F_TO_ME && js8asm_to_me(&a, "@OK") == JS8ASM_F_TO_GROUP &&
           js8asm_to_me(&a, "@ALLCALL") == JS8ASM_F_TO_GROUP && js8asm_to_me(&a, "@OKX") == 0 &&
-          js8asm_to_me(&a, "OK1BTX") == 0 && js8asm_to_me(&a, "@HB") == 0, "to_me");
+          js8asm_to_me(&a, "OK1BT0") == 0 && js8asm_to_me(&a, "@HB") == 0, "to_me");
 
     /* 1: directed MSG with text and checksum, to me */
     n = js8_build_message(&cfg, "OK1BT MSG HELLO TOM, MEETING AT 1800 UTC ON 7078", fr, 40);
     CHECK(n >= 3, "frames %d", n);
     ngot = 0; feed_frames(fr, n, 1500, -7, &t);
     CHECK(ngot == 1, "messages %d", ngot);
-    CHECK_STR(got[0].text, "OK2XYZ: OK1BT MSG HELLO TOM, MEETING AT 1800 UTC ON 7078");
+    CHECK_STR(got[0].text, "Q2XYZ: OK1BT MSG HELLO TOM, MEETING AT 1800 UTC ON 7078");
     CHECK(got[0].flags == (JS8ASM_F_TO_ME | JS8ASM_F_CRC_OK), "flags %02x", got[0].flags);
     CHECK(got[0].frames == n && got[0].cmd == 9 && got[0].snr == -7 && got[0].freq == 1500, "meta");
-    CHECK_STR(got[0].from, "OK2XYZ"); CHECK_STR(got[0].to, "OK1BT");
+    CHECK_STR(got[0].from, "Q2XYZ"); CHECK_STR(got[0].to, "OK1BT");
 
     /* 2: same message with one data frame corrupted -> checksum fails */
     ngot = 0;
@@ -907,9 +914,9 @@ static void t_asm(void)
 
     /* 3: two interleaved transmissions on different frequencies, with drift */
     n = js8_build_message(&cfg, "OK1BT MSG FIRST STREAM TEXT HERE", fr, 40);
-    cfg.mycall = "DL1ABC";
+    cfg.mycall = "Q1ABC";
     n2 = js8_build_message(&cfg, "HELLO WORLD THIS IS FREE TEXT FOR EVERYONE OK1BT PSE K", fr2, 40);
-    cfg.mycall = "OK2XYZ";
+    cfg.mycall = "Q2XYZ";
     ngot = 0;
     for (i = 0; i < n || i < n2; i++) {
         if (i < n)  { js8_msg_decode(fr[i], &jsc, &m);  js8asm_feed(&a, &m, 1500 + 3 * i, -5, t); }
@@ -919,7 +926,7 @@ static void t_asm(void)
     CHECK(ngot == 2, "messages %d", ngot);
     for (i = 0; i < ngot && i < 2; i++) {
         if (got[i].cmd == 9) {
-            CHECK_STR(got[i].text, "OK2XYZ: OK1BT MSG FIRST STREAM TEXT HERE");
+            CHECK_STR(got[i].text, "Q2XYZ: OK1BT MSG FIRST STREAM TEXT HERE");
             CHECK(got[i].flags == (JS8ASM_F_TO_ME | JS8ASM_F_CRC_OK), "flags %02x", got[i].flags);
         } else {
             CHECK_STR(got[i].text, "HELLO WORLD THIS IS FREE TEXT FOR EVERYONE OK1BT PSE K");
@@ -937,7 +944,7 @@ static void t_asm(void)
     js8asm_tick(&a, t + 50);
     CHECK(ngot == 1 && (got[0].flags & JS8ASM_F_TIMEOUT) && (got[0].flags & JS8ASM_F_TO_ME) &&
           !(got[0].flags & (JS8ASM_F_CRC_OK | JS8ASM_F_CRC_BAD)), "timeout flags %02x n %d", got[0].flags, ngot);
-    CHECK(strncmp(got[0].text, "OK2XYZ: OK1BT MSG THE END", 25) == 0, "text '%s'", got[0].text);
+    CHECK(strncmp(got[0].text, "Q2XYZ: OK1BT MSG THE END", 24) == 0, "text '%s'", got[0].text);
     t += 100;
 
     /* 5: a First frame clears what was buffered on the frequency */
@@ -948,7 +955,7 @@ static void t_asm(void)
     feed_frames(fr2, n2, 904, -3, &t);
     CHECK(ngot == 2, "messages %d", ngot);
     CHECK((got[0].flags & JS8ASM_F_TIMEOUT) != 0, "first is incomplete");
-    CHECK_STR(got[1].text, "OK2XYZ: @OK MSG SECOND");
+    CHECK_STR(got[1].text, "Q2XYZ: @OK MSG SECOND");
     CHECK(got[1].flags == (JS8ASM_F_TO_GROUP | JS8ASM_F_CRC_OK), "flags %02x", got[1].flags);
 
     /* 6: beginning missed (no First) -> partial */
@@ -973,54 +980,54 @@ static void t_asm(void)
     t += 200;
 
     /* 8: heartbeat and CQ are complete at once */
-    cfg.mycall = "OK2XYZ";
+    cfg.mycall = "Q2XYZ";
     n = js8_build_message(&cfg, "HB JN89", fr, 40);
     CHECK(n == 1, "hb frames %d", n);
     ngot = 0; feed_frames(fr, n, 700, -20, &t);
     CHECK(ngot == 1, "hb");
-    CHECK_STR(got[0].text, "OK2XYZ: @HB HEARTBEAT JN89");
+    CHECK_STR(got[0].text, "Q2XYZ: @HB HEARTBEAT JN89");
     CHECK(got[0].flags == 0, "hb flags %02x", got[0].flags);
     n = js8_build_message(&cfg, "CQ CQ CQ JN89", fr, 40);
     ngot = 0; feed_frames(fr, n, 700, -20, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: @ALLCALL CQ CQ CQ JN89");
+    CHECK_STR(got[0].text, "Q2XYZ: @ALLCALL CQ CQ CQ JN89");
     CHECK(got[0].flags == JS8ASM_F_TO_GROUP, "cq flags %02x", got[0].flags);
     /* CQ followed by text */
     n = js8_build_message(&cfg, "CQ CQ CQ JN89 PSE K", fr, 40);
     CHECK(n == 2, "cq+text frames %d", n);
     ngot = 0; feed_frames(fr, n, 700, -20, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: @ALLCALL CQ CQ CQ JN89 PSE K");
+    CHECK_STR(got[0].text, "Q2XYZ: @ALLCALL CQ CQ CQ JN89 PSE K");
 
     /* 9: compound calls: compound frame + compound directed frame + data */
-    cfg.mycall = "VE3/OK2XYZ";
+    cfg.mycall = "VE3/Q2XYZ";
     n = js8_build_message(&cfg, "OK1BT MSG VIA COMPOUND CALL", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m); CHECK(m.type == JS8_FT_COMPOUND && m.i3 == 1, "frame 0 compound");
     js8_msg_decode(fr[1], &jsc, &m); CHECK(m.type == JS8_FT_COMPOUND_DIRECTED, "frame 1 compound directed");
     ngot = 0; feed_frames(fr, n, 1800, -9, &t);
     CHECK(ngot == 1, "messages %d", ngot);
-    CHECK_STR(got[0].text, "VE3/OK2XYZ: OK1BT MSG VIA COMPOUND CALL");
+    CHECK_STR(got[0].text, "VE3/Q2XYZ: OK1BT MSG VIA COMPOUND CALL");
     CHECK(got[0].flags == (JS8ASM_F_TO_ME | JS8ASM_F_CRC_OK), "flags %02x", got[0].flags);
-    cfg.mycall = "OK2XYZ";
+    cfg.mycall = "Q2XYZ";
     n = js8_build_message(&cfg, "OK1BT/QRP SNR -11", fr, 40);
     CHECK(n == 2, "compound to: frames %d", n);
     ngot = 0; feed_frames(fr, n, 1800, -9, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: OK1BT/QRP SNR -11");
+    CHECK_STR(got[0].text, "Q2XYZ: OK1BT/QRP SNR -11");
     CHECK(got[0].cmd == 25, "cmd %d", got[0].cmd);
 
     /* 10: single-frame directed commands */
     n = js8_build_message(&cfg, "OK1BT SNR?", fr, 40);
     CHECK(n == 1, "frames %d", n);
     ngot = 0; feed_frames(fr, n, 600, 1, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: OK1BT SNR?");
+    CHECK_STR(got[0].text, "Q2XYZ: OK1BT SNR?");
     CHECK(got[0].flags == JS8ASM_F_TO_ME, "flags %02x", got[0].flags);
     n = js8_build_message(&cfg, "OK1BT?", fr, 40);
     ngot = 0; feed_frames(fr, n, 600, 1, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: OK1BT SNR?");
+    CHECK_STR(got[0].text, "Q2XYZ: OK1BT SNR?");
     n = js8_build_message(&cfg, "OK1BT HEARTBEAT SNR +03", fr, 40);
     ngot = 0; feed_frames(fr, n, 600, 1, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: OK1BT HEARTBEAT SNR +03");
+    CHECK_STR(got[0].text, "Q2XYZ: OK1BT HEARTBEAT SNR +03");
     n = js8_build_message(&cfg, "OK1BT GOOD MORNING", fr, 40);
     ngot = 0; feed_frames(fr, n, 600, 1, &t);
-    CHECK_STR(got[0].text, "OK2XYZ: OK1BT GOOD MORNING");
+    CHECK_STR(got[0].text, "Q2XYZ: OK1BT GOOD MORNING");
     CHECK(got[0].cmd == 31 && (got[0].flags & JS8ASM_F_TO_ME), "free text directed");
 
     /* 11: more concurrent streams than table entries: the oldest is closed */
@@ -1074,7 +1081,7 @@ static void t_asm_review(void)
      * (the old per-stream buffer cut every message at 231 characters and then skipped the checksum) */
     js8asm_init(&a, "OK1BT", 0, emit, 0);
     ngot = 0; n = 0;
-    feed_directed(&a, "DL1ABC", "OK1BT", 9, JS8_I3_FIRST, 1200, t);
+    feed_directed(&a, "Q1ABC", "OK1BT", 9, JS8_I3_FIRST, 1200, t);
     for (i = 0; i < 40; i++) n += sprintf(want[0] + n, "WORD%02d OF A LONG %s", i, i < 39 ? "" : "END");
     js8_checksum16(want[0], n, ck);
     for (i = 0; i < n; i += 15) {
@@ -1085,7 +1092,7 @@ static void t_asm_review(void)
     feed_text(&a, JS8_FT_DATA, JS8_I3_LAST, piece, 1200, t += 15);
     CHECK(n > 600 && ngot == 1, "R1 long message: %d chars, %d messages", n, ngot);
     CHECK(got[0].flags == (JS8ASM_F_TO_ME | JS8ASM_F_CRC_OK), "R1 flags %02x", got[0].flags);
-    CHECK(strlen(got[0].text) == (size_t)n + strlen("DL1ABC: OK1BT MSG ") && !strcmp(got[0].text + 18, want[0]), "R1 text whole (%d chars)", (int)strlen(got[0].text));
+    CHECK(strlen(got[0].text) == (size_t)n + strlen("Q1ABC: OK1BT MSG ") && !strcmp(got[0].text + 17, want[0]), "R1 text whole (%d chars)", (int)strlen(got[0].text));
     CHECK(a.pool_len == 0, "R1 pool empty after the message: %d", a.pool_len);
 
     /* R2: eight messages built up interleaved, every one comes out exactly as fed (pieces move in the pool) */
@@ -1140,14 +1147,14 @@ static void t_asm_review(void)
     {
         js8_msg_t m;
         memset(&m, 0, sizeof m);
-        m.type = JS8_FT_COMPOUND; m.i3 = JS8_I3_FIRST; m.cmd = -1; strcpy(m.from, "DL1ABC/P"); strcpy(m.text, "DL1ABC/P: ");
+        m.type = JS8_FT_COMPOUND; m.i3 = JS8_I3_FIRST; m.cmd = -1; strcpy(m.from, "Q1ABC/P"); strcpy(m.text, "Q1ABC/P: ");
         js8asm_feed(&a, &m, 1500, -5, t += 15);
     }
     feed_text(&a, JS8_FT_DATA, 0, " HELLO ", 1500, t += 15);
     feed_text(&a, JS8_FT_DATA, JS8_I3_LAST, "OK1BT 73", 1500, t += 15);
     CHECK(ngot == 1, "R4 messages %d", ngot);
-    CHECK_STR(got[0].text, "DL1ABC/P: HELLO OK1BT 73");
-    CHECK_STR(got[0].from, "DL1ABC/P");
+    CHECK_STR(got[0].text, "Q1ABC/P: HELLO OK1BT 73");
+    CHECK_STR(got[0].from, "Q1ABC/P");
     CHECK(got[0].flags == JS8ASM_F_MENTION && got[0].frames == 3, "R4 flags %02x frames %d", got[0].flags, got[0].frames);
 
     /* R5: the message text is printable (dictionary word 69 is a newline, 72 is 0x1A); the checksum is still
@@ -1158,12 +1165,12 @@ static void t_asm_review(void)
     CHECK(ngot == 1, "R5 messages %d", ngot);
     CHECK_STR(got[0].text, "HELLO N 120000 FAKE NOTE?? END \xe9");
     ngot = 0;
-    feed_directed(&a, "DL1ABC", "OK1BT", 9, JS8_I3_FIRST, 1000, t += 15);
+    feed_directed(&a, "Q1ABC", "OK1BT", 9, JS8_I3_FIRST, 1000, t += 15);
     js8_checksum16("LINE1\nLINE2", 11, ck);
     sprintf(piece, "LINE1\nLINE2 %s", ck);
     feed_text(&a, JS8_FT_DATA, JS8_I3_LAST, piece, 1000, t += 15);
     CHECK(ngot == 1 && got[0].flags == (JS8ASM_F_TO_ME | JS8ASM_F_CRC_OK), "R5 checksum over the raw text: flags %02x", got[0].flags);
-    CHECK_STR(got[0].text, "DL1ABC: OK1BT MSG LINE1 LINE2");
+    CHECK_STR(got[0].text, "Q1ABC: OK1BT MSG LINE1 LINE2");
 }
 
 /* ---- pack -> unpack round trips for random messages -------------------------- */
@@ -1171,6 +1178,7 @@ static const char *rand_word(char *buf)
 {
     static const char *extra[] = { "73", "5X9", "QTH:", "(TEST)", "RST", "599", "TNX", "FB", "GM", "PWR 5W",
         "ANT: DIPOLE", "WX SUNNY +21C", "JO70", "OK1BT", "DE", "K", "U+00E1", "A,B;C", "100%", "#1", "=", "2+2=4",
+        /* "KN4CRD" is a word of the JS8Call dictionary (jsc_map.cpp); kept as a dictionary hit followed by "/P" */
         "KN4CRD/P", "IC-705", "\"QUOTE\"", "'S", "!", "?", "...", "@HOME", "E-MAIL", "[X]", "{Y}", "A_B", "~", "^", "|", "<>", "&", "$5", "*" };
     uint32_t k = rn(10);
     if (k < 6) {
@@ -1221,8 +1229,8 @@ static void rand_text(char *out, int maxlen, int first_plain)
 static void t_roundtrip(void)
 {
     static js8asm_t a;
-    static const char *tos[] = { "OK1BT", "OK1BT/P", "@ALLCALL", "K1ABC", "@OK", "9A/OK1BT", "DL1ABC/QRP", "@JS8NET", "3DA0XY" };
-    static const char *mys[] = { "OK2XYZ", "OK2XYZ/P", "VE3/OK2XYZ", "W1AW", "OK2XYZ/MM" };
+    static const char *tos[] = { "OK1BT", "OK1BT/P", "@ALLCALL", "Q3ABC", "@OK", "9A/OK1BT", "Q1ABC/QRP", "@JS8NET", "3DA0XY" };
+    static const char *mys[] = { "Q2XYZ", "Q2XYZ/P", "VE3/Q2XYZ", "Q1AW", "Q2XYZ/MM" };
     static const int cmds[] = { 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28, 30, 31, 25, 29 };
     int n, fail = 0, total_frames = 0, kinds[4] = { 0, 0, 0, 0 }, huff = 0, jscf = 0, crcok = 0;
     uint32_t bytes0 = jsc.st_bytes;
@@ -1330,42 +1338,42 @@ static void t_builder(void)
     js8_checksum16("", 0, ck);
     CHECK_STR(ck, "000");
     /* own call at the start of the line is removed */
-    n = js8_build_message(&cfg, "OK1BT: OK2XYZ ACK", fr, 40);
+    n = js8_build_message(&cfg, "OK1BT: Q2XYZ ACK", fr, 40);
     CHECK(n == 1, "frames %d", n);
     js8_msg_decode(fr[0], &jsc, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ ACK ");
+    CHECK_STR(m.text, "OK1BT: Q2XYZ ACK ");
     CHECK(m.i3 == 3, "i3 %d", m.i3);
     /* lower case input is upper-cased */
-    n = js8_build_message(&cfg, "ok2xyz snr -05", fr, 40);
+    n = js8_build_message(&cfg, "q2xyz snr -05", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ SNR -05 ");
+    CHECK_STR(m.text, "OK1BT: Q2XYZ SNR -05 ");
     /* number is clamped like packNum */
-    n = js8_build_message(&cfg, "OK2XYZ SNR -31", fr, 40);
+    n = js8_build_message(&cfg, "Q2XYZ SNR -31", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
-    CHECK_STR(m.text, "OK1BT: OK2XYZ SNR -30 ");
+    CHECK_STR(m.text, "OK1BT: Q2XYZ SNR -30 ");
     /* text that is not a callsign stays free text */
     n = js8_build_message(&cfg, "HELLO WORLD", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
     CHECK(n == 1 && (m.type == JS8_FT_DATA || m.type == JS8_FT_DATA_COMPRESSED), "free text type %d", m.type);
     CHECK_STR(m.text, "HELLO WORLD");
     /* MSG TO: and QUERY MSGS are found before their shorter forms */
-    n = js8_build_message(&cfg, "OK2XYZ MSG TO:K1ABC HI", fr, 40);
+    n = js8_build_message(&cfg, "Q2XYZ MSG TO:Q3ABC HI", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
     CHECK(m.cmd == 10, "MSG TO: cmd %d", m.cmd);
-    n = js8_build_message(&cfg, "OK2XYZ QUERY MSGS", fr, 40);
+    n = js8_build_message(&cfg, "Q2XYZ QUERY MSGS", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
     CHECK(m.cmd == 12 && n == 1, "QUERY MSGS cmd %d", m.cmd);
-    n = js8_build_message(&cfg, "OK2XYZ QUERY MSGS?", fr, 40);
+    n = js8_build_message(&cfg, "Q2XYZ QUERY MSGS?", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
     CHECK(m.cmd == 12 && n == 1, "QUERY MSGS? cmd %d n %d", m.cmd, n);
-    n = js8_build_message(&cfg, "OK2XYZ>HELLO", fr, 40);
+    n = js8_build_message(&cfg, "Q2XYZ>HELLO", fr, 40);
     js8_msg_decode(fr[0], &jsc, &m);
     CHECK(m.cmd == 5 && n >= 2, "relay cmd %d n %d", m.cmd, n);
     /* too many frames for the caller's array */
-    CHECK(js8_build_message(&cfg, "OK2XYZ MSG THIS TEXT NEEDS MORE THAN TWO FRAMES FOR SURE", fr, 2) == -1, "max_frames");
+    CHECK(js8_build_message(&cfg, "Q2XYZ MSG THIS TEXT NEEDS MORE THAN TWO FRAMES FOR SURE", fr, 2) == -1, "max_frames");
     /* message to oneself is not a directed message (JS8Call: to != mycall) */
-    { js8_build_t c2 = { "OK2XYZ", "JN89", 0, &jsc };
-      n = js8_build_message(&c2, "OK2XYZ ACK", fr, 40);      /* own call stripped, "ACK" is free text */
+    { js8_build_t c2 = { "Q2XYZ", "JN89", 0, &jsc };
+      n = js8_build_message(&c2, "Q2XYZ ACK", fr, 40);      /* own call stripped, "ACK" is free text */
       js8_msg_decode(fr[0], &jsc, &m);
       CHECK(n == 1 && m.type != JS8_FT_DIRECTED, "self: n %d type %d", n, m.type);
       CHECK_STR(m.text, "ACK"); }

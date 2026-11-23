@@ -335,11 +335,11 @@ static void ctl_frame(uint8_t *f, int i3)
 static uint8_t q_fr[80][JS8_FRAME_BYTES]; static int q_n, q_i, q_freq;
 static void build_hostile(js8jsc_t *pj)
 {
-    static const char *to[] = { "OK1BT", "OK1BT", "@ALLCALL", "OK1BT/P", "DL1ABC", "@OK", "OK1BTX" };
-    static const char *cmd[] = { " MSG ", " ", ">", " MSG TO:OK2XYZ ", " QUERY CALL OK1BT? ", " SNR -12", " ACK ", " CMD ", " HEARTBEAT SNR +05 " };
+    static const char *to[] = { "OK1BT", "OK1BT", "@ALLCALL", "OK1BT/P", "Q1ABC", "@OK", "0K1BT" };
+    static const char *cmd[] = { " MSG ", " ", ">", " MSG TO:Q2XYZ ", " QUERY CALL OK1BT? ", " SNR -12", " ACK ", " CMD ", " HEARTBEAT SNR +05 " };
     static const char *wd[] = { "OK1BT", "THE", "QUICK", "BROWN", "FOX", "73", "E", "?", "OK1BT/P", "XOK1BT", "5NN", "...", "A", "TEST", "MEET", "1900Z", "WWWWWWWWWWWW", "@@@", "++", "Q" };
     char t[400]; int n = 0, len = (int)(rnd() % 236);
-    js8_build_t cfg = { rnd() % 5 ? "DL1ABC" : "DL/OK2ABC/P", "JO70", (uint8_t)(rnd() & 1), rnd() & 1 ? pj : 0 };
+    js8_build_t cfg = { rnd() % 5 ? "Q1ABC" : "DL/Q2ABC/P", "JO70", (uint8_t)(rnd() & 1), rnd() & 1 ? pj : 0 };
     n += snprintf(t + n, sizeof t - (size_t)n, "%s%s", to[rnd() % 7], cmd[rnd() % 9]);
     while (n < len) {
         if (rnd() % 4 == 0) { int k = 1 + (int)(rnd() % 50); char ch = "W 9/?.E"[rnd() % 7]; while (k-- && n < 300) t[n++] = ch; t[n] = 0; }
@@ -549,8 +549,8 @@ int main(int argc, char **argv)
         for (long i = 0; i < iters; i++) {
             js8_result_t r; memset(&r, 0, sizeof r);
             int freq;
-            if (i % 97 == 5 || i % 97 == 6) {                 /* "DL1ABC: OK1BT " + a frame of control characters, to MYCALL */
-                if (i % 97 == 5) js8_pack_directed("DL1ABC", "OK1BT", 31, 0, 0, JS8_I3_FIRST, r.frame);
+            if (i % 97 == 5 || i % 97 == 6) {                 /* "Q1ABC: OK1BT " + a frame of control characters, to MYCALL */
+                if (i % 97 == 5) js8_pack_directed("Q1ABC", "OK1BT", 31, 0, 0, JS8_I3_FIRST, r.frame);
                 else ctl_frame(r.frame, JS8_I3_LAST);
                 freq = 3333;
             } else if (q_i < q_n && rnd() % 8) {

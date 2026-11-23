@@ -45,7 +45,7 @@ typedef struct {
 
 /* Whole message -> frames, following Varicode::buildMessageFrames:
  *   "CQ CQ CQ JO70", "HB JO70", "@ALLCALL CQ ..."          heartbeat / CQ frame
- *   "OK2XYZ SNR?", "OK2XYZ SNR -12", "OK2XYZ MSG text"      directed (+ data, checksum)
+ *   "Q2XYZ SNR?", "Q2XYZ SNR -12", "Q2XYZ MSG text"         directed (+ data, checksum)
  *   anything else                                           free text data frames
  * Text is upper-cased.  Returns the number of frames (first / last flags set),
  * or -1 if max_frames is too small. */

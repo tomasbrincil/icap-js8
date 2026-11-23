@@ -10,7 +10,7 @@ The rule it is being built to, and that will not change: the app transmits only 
 
 ## Text entry with the radio's own keyboard
 
-The IC-705 has an on-screen keyboard (for example in the RTTY memory editor). Apps cannot use it today. See [sq6emm/icap-sdk#4](https://github.com/sq6emm/icap-sdk/issues/4). Free text from the radio itself depends on it.
+The IC-705 has an on-screen keyboard (for example in the RTTY memory editor). Apps cannot use it today. See our request in [sq6emm/icap-sdk#4](https://github.com/sq6emm/icap-sdk/issues/4) (text entry is the first wish there). Free text from the radio itself depends on it.
 
 ## Terminal link
 

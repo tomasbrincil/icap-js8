@@ -53,7 +53,7 @@ typedef struct {
     uint32_t t_first, t_last;     /* seconds, as given to js8asm_feed            */
     char     from[JS8_CALL_MAX];
     char     to[JS8_CALL_MAX];
-    char     text[JS8ASM_TEXT_MAX];  /* whole line, e.g. "OK1BT: OK2XYZ MSG HELLO" */
+    char     text[JS8ASM_TEXT_MAX];  /* whole line, e.g. "OK1BT: Q2XYZ MSG HELLO" */
 } js8asm_msg_t;
 
 typedef void (*js8asm_emit_t)(void *user, const js8asm_msg_t *msg);

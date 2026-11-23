@@ -17,7 +17,7 @@ State of 23 November 2026.
 **Not in it**
 
 - No transmit code, no terminal link, no network code. Transmit is under review and not published, see `ROADMAP.md`.
-- No Icom firmware or anything derived from it. No recordings. No binaries, no dictionary files (you generate them).
+- No Icom firmware or anything derived from it. No recordings. No program binaries, no dictionary files (you generate them).
 
 **Known issues**
 

@@ -124,11 +124,11 @@ Verified for this release, on one machine (Debian 13, x86-64, gcc 14.2, GNU Make
 - `make arm` from that copy produced a `JS8.APP` byte-identical to the one that ran on the radio;
 - `make dist` from that copy wrote the SD-card set (259 files in `IC-705/Apps`) and the archive;
 - without an ARM compiler, `make e2e` skipped the ARM part and passed;
-- with our private set of 19 recordings given by `RECORDINGS` (they are not shipped), `make test-recordings` passed: 136 frames, 380 streaming comparisons identical, all checks of the end-to-end suite.
+- with our private set of 19 recordings given by `RECORDINGS` (they are not shipped), `make test-recordings` passed: 136 frames, 380 streaming comparisons identical, all checks of the end-to-end suite;
+- `make fetch` over the network, once, on 23 November 2026, from a second fresh copy: the SDK clone at the pinned commit (then still the head of the SDK repository) and the seven files with matching checksums; `make test`, `make arm` and `make dist` from that copy passed and `JS8.APP` was byte-identical.
 
 **Not verified:**
 
-- `make fetch` over the network (the files were taken from local copies with `REFS_FROM`; the checksums matched);
 - a build on any other machine, operating system or compiler; clang; macOS; Windows;
 - any toolchain other than Arm GNU Toolchain 12.2.rel1 for the ARM build.
 

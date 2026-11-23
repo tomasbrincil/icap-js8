@@ -462,14 +462,14 @@ def t_asm():
     def fr(hexs,f=1000,snr=-5,t=0): L.append('%s %d %d %d'%(hexs,f,snr,t))
     def w(s,sep=0): return (widx(s),sep)
     L.append('# S1'); L.append('CK 123456789')
-    L.append('# S2'); fr(compound(1,'DL1ABC/P',grid('JO70'),0,1),t=0); fr(compound(2,'G4XYZ',32410+0x80+19,0,2),t=15)
+    L.append('# S2'); fr(compound(1,'Q1ABC/P',grid('JO70'),0,1),t=0); fr(compound(2,'Q4XYZ',32410+0x80+19,0,2),t=15)
     body='MEET AT 1900'
-    L.append('# S3'); fr(directed('DL1ABC','OK1BT',9,None,1),t=100); fr(huff(' MEET AT ',0),t=115); fr(huff('1900 '+ck16(body),2),t=130)
-    L.append('# S4'); fr(directed('DL1ABC','OK1BT',9,None,1),t=200); fr(huff(' MEET AT ',0),t=215); fr(huff('1900 000',2),t=230)
+    L.append('# S3'); fr(directed('Q1ABC','OK1BT',9,None,1),t=100); fr(huff(' MEET AT ',0),t=115); fr(huff('1900 '+ck16(body),2),t=130)
+    L.append('# S4'); fr(directed('Q1ABC','OK1BT',9,None,1),t=200); fr(huff(' MEET AT ',0),t=215); fr(huff('1900 000',2),t=230)
     L.append('# S5'); fr(jsc([w(b'HELLO'),(69,0),w(b'WORLD',1),(72,0)],3),t=300)
-    L.append('# S6'); fr(compound(1,'DL1ABC/P',grid('JO70'),0,1),f=1500,t=400); fr(huff('HELLO',2),f=1500,t=415)
+    L.append('# S6'); fr(compound(1,'Q1ABC/P',grid('JO70'),0,1),f=1500,t=400); fr(huff('HELLO',2),f=1500,t=415)
     long=('TEA TEA TEA TEA TEA '*14).rstrip(); full=long+' '+ck16(long)
-    L.append('# S7'); fr(directed('DL1ABC','OK1BT',9,None,1),f=1800,t=500)
+    L.append('# S7'); fr(directed('Q1ABC','OK1BT',9,None,1),f=1800,t=500)
     ch=[full[i:i+20] for i in range(0,len(full),20)]
     for k,c in enumerate(ch): fr(huff(c,2 if k==len(ch)-1 else 0),f=1800,t=515+15*k)
     out=run(['asm',SD,'OK1BT'],'\n'.join(L)+'\n'); sec={}; cur=None
@@ -478,11 +478,11 @@ def t_asm():
         elif cur: sec[cur].append(l)
     msgs=lambda s:[l for l in sec[s] if l.startswith('  MSG ')]
     check('5.1 CRC-16/KERMIT checksum of "123456789" is 54G', sec['S1']==['CK 123456789 -> 54G'], str(sec['S1']))
-    check('5.2 compound call + compound-directed -> "DL1ABC/P: G4XYZ SNR -12"', len(msgs('S2'))==1 and 'text=[DL1ABC/P: G4XYZ SNR -12]' in msgs('S2')[0], str(msgs('S2')))
-    check('5.3 MSG with valid checksum: verified and stripped', len(msgs('S3'))==1 and 'flags=41' in msgs('S3')[0] and 'text=[DL1ABC: OK1BT MSG MEET AT 1900]' in msgs('S3')[0], str(msgs('S3')))
+    check('5.2 compound call + compound-directed -> "Q1ABC/P: Q4XYZ SNR -12"', len(msgs('S2'))==1 and 'text=[Q1ABC/P: Q4XYZ SNR -12]' in msgs('S2')[0], str(msgs('S2')))
+    check('5.3 MSG with valid checksum: verified and stripped', len(msgs('S3'))==1 and 'flags=41' in msgs('S3')[0] and 'text=[Q1ABC: OK1BT MSG MEET AT 1900]' in msgs('S3')[0], str(msgs('S3')))
     check('5.4 MSG with wrong checksum is flagged', len(msgs('S4'))==1 and 'flags=81' in msgs('S4')[0], str(msgs('S4')))
     check('5.5 KNOWN JSC words 69 (newline) and 72 (0x1a) must not reach the message text raw (log lines)', not any('\\x0a' in l or '\\x1a' in l for l in msgs('S5')), str(msgs('S5')))
-    check('5.6 KNOWN compound frame followed by data keeps the sender call (JS8Call shows "DL1ABC/P: HELLO")', any('DL1ABC/P' in l for l in msgs('S6')), str(msgs('S6')))
+    check('5.6 KNOWN compound frame followed by data keeps the sender call (JS8Call shows "Q1ABC/P: HELLO")', any('Q1ABC/P' in l for l in msgs('S6')), str(msgs('S6')))
     check('5.7 KNOWN 279-character MSG with valid checksum is delivered whole and verified', len(msgs('S7'))==1 and 'flags=41' in msgs('S7')[0], msgs('S7')[0][:90] if msgs('S7') else '')
 if __name__=='__main__':
     import argparse

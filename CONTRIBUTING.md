@@ -1,8 +1,10 @@
 # Contributing
 
-Thank you for looking. This is a small hobby project maintained by one person, Tomas Brincil OK1BT, with the code written by an AI coding assistant under his direction (see `AUTHORS.md`). Reports from real radios are worth more to it than anything else.
+Thank you for looking. The maintainer is one person, Tomas Brincil OK1BT (see `AUTHORS.md`). Reports from real radios are worth more to this project than anything else.
 
-**Please read this before opening an issue.** Bug reports and ideas are welcome and they are read. But the project is written by an AI assistant under one person's direction, in spare time, so please do not expect a fix or a feature on any schedule - many issues will stay open, and that is not a judgement on the report. If something matters to you, a fork or a pull request is the surest way, and you are very welcome to it.
+## What to expect
+
+From the maintainer: "This is a hobby project, written by an AI assistant under my direction in my spare time. Bug reports and ideas are welcome and I read them, but please do not expect a fix or a feature on any schedule - many will stay open. If something matters to you, a fork or a pull request is the surest way, and you are very welcome to it."
 
 ## What helps most
 
@@ -16,10 +18,11 @@ Thank you for looking. This is a small hobby project maintained by one person, T
 - **This repository is a receiver.** The app must stay free of any call to the loader's transmit or network services; the tests check the sources for this. Transmit work is not accepted here until the maintainer publishes the transmit engine (see `ROADMAP.md`). The rule for that work is fixed: nothing transmits unless the owner has armed the beacon on the radio and a human has requested exactly that message.
 - **Say what was tested and how.** "Measured on the radio", "simulator only" and "not tested" are different things, and the documentation keeps them apart. A pull request should say which applies. Numbers need an origin.
 - **Run the tests.** `make test` before a pull request; `make test-full` for changes to the decoder. Do not loosen a check to make it pass; if a check is wrong, say why.
-- **No recordings, no firmware, no binaries** in the repository. No Icom code and nothing derived from it.
+- **No recordings, no firmware, no program binaries** in the repository. The only files that are not text are the photos in `docs/img/`; a new photo must be free of metadata (the export check refuses a JPEG with Exif or other extra segments) and must not show more of other people than what they sent on the air. No Icom code and nothing derived from it.
 - **Keep the limits in mind.** The app image (code + data + bss) must fit 80 KiB; the data region is 240 KiB. `make arm` prints the sizes.
 - **Plain C99, freestanding** for everything that goes into the radio: no libc, no malloc.
 - **Documentation in plain English**, without promotional language.
+- **Call signs in tests and examples are made up so that they cannot be real:** `N0CALL` where one call is enough, otherwise Q + digit (`Q1ABC`, `Q2XYZ`; never Q + letter, which the packer reads as a 3X call) or a leading zero (`0A1AA`). `OK1BT` is the maintainer's own. Do not add a call sign you heard on the air to a test or a document.
 
 ## Licence of contributions
 

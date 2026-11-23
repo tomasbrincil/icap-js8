@@ -27,7 +27,7 @@ Notes on the last row:
 - One radio, one band, one day (23 November 2026), one timed run of 35 periods of 15 s: under 9 minutes. How busy the band was in each period was not recorded.
 - Comments in the sources (`src/js8dec.c`, `src/js8dec.h`, `tests/js8synth.h`) quote times of single decoder stages on the radio. Those are development notes from the two earlier builds, taken once on the same day to decide where to save time and to calibrate the timing model of section 2. They are not part of the measurements published here.
 
-Seen on the same radio, and not examined further: the Apps list showed at most 8 apps; the app rescan was noticeably slow with about 260 extra files in the Apps folder; a `scope=450-2550` line of its own in `JS8.CFG` set the mini-scope span; DECODE rows longer than 40 characters wrapped when the mini-scope was shown.
+Seen on the same radio, and not examined further: the Apps list showed at most 8 apps; the app rescan was noticeably slow with about 260 extra files in the Apps folder; a `scope=450-2550` line of its own in `JS8.CFG` set the mini-scope span (this app does not parse that key; that the loader or the firmware reads it is our inference); DECODE rows longer than about 40 characters wrapped when the mini-scope was shown (with an earlier build, which printed longer rows).
 
 ## 2. Simulator results (PC)
 
@@ -78,10 +78,10 @@ P <hhmmss> d<frames> <-|D|B> T<decode> r<read> f<FFT> s<search> d<decoding> u<su
 For example, from a **simulator** run of two generated frames (the times are PC times, far below what the radio needs; the long `S` line is left out):
 
 ```
-JS8PERF 1 JS8 RX OK1ABC 450-2550 Hz | ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000 arena 177840/189824
-X T13 r0 f2 s8 d1 u0 p1 t2 b6
-P 120000 d1 - T13 r0 f1 s8 d1 u0 p0 t2 b6 o3 i81 w1/0 g1
-P 120015 d1 - T8 r0 f2 s4 d1 u0 p1 t2 b3 o1 i33 w1/0 g1
+JS8PERF 1 JS8 RX N0CALL 450-2550 Hz | ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000 arena 177840/189824
+X T21 r0 f2 s12 d3 u0 p1 t2 b6
+P 120000 d1 - T21 r0 f2 s12 d3 u0 p1 t2 b6 o4 i76 w1/0 g1
+P 120015 d1 - T16 r0 f2 s12 d0 u0 p1 t1 b1 o2 i1 w1/0 g1
 P 120030 d0 - T8 r0 f1 s7 d0 u0 p0 t0 b0 o0 i0 w1/0 g0
 ```
 
