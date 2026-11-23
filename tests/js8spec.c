@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 Tomas Brincil OK1BT. Written by Claude (Anthropic) under his direction; see AUTHORS.md.
  *
- * js8spec - small PC-only spectrum analysis tool for checkpoint C2. It knows nothing about
+ * js8spec - small PC-only spectrum analysis tool for "make c2". It knows nothing about
  * the encoder; it only looks at the samples of a CLEAN (noise-free, single signal) file:
  *   1. envelope: first/last sample above 25 % of the peak -> start time and duration
  *   2. per 1280-sample symbol: DFT peak search (1 Hz grid 100..3900 Hz, then 0.01 Hz) ->

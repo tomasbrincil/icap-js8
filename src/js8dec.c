@@ -31,8 +31,8 @@
  *      complex (5 radix-4 FFTs of 256 + a 5-point butterfly), the Hann window applied to the spectrum (3 taps),
  *      power -> 0.5 dB by table (rfft, spec_row).  The candidate search adds the waterfall cells of the Costas
  *      pattern row by row for all frequencies at once (find_candidates), BP is a layered integer sum-product
- *      (bp), the subtraction runs four phasors per signal (corr_run, sub_run): kernels of the speed-up of
- *      23 Nov 2026, checked by tests/js8kbench.c (make kbench).
+ *      (bp), the subtraction runs four phasors per signal (corr_run, sub_run): the faster kernels of
+ *      this release, checked by tests/js8kbench.c (make kbench).
  *   2. Costas sync search (three 7-symbol groups, js8_costas_normal) -> per candidate: hard-sync check
  *      (>= 7 of 21 like JS8Call), LLRs from the waterfall with the natural-binary tone map, BP over the
  *      (174,87) code (codeword = 87 parity bits then the 87 message bits), CRC-12. Attempts per
@@ -40,7 +40,7 @@
  *      4 = LLR[0..47] zeroed; plus (from the FT8 app) 5 = tone powers interpolated towards the true
  *      time / frequency. JS8Call's limits on the number of hard errors apply per pass.
  *   3. Decoded signals are subtracted from the audio and the search is repeated next to them (a "residual
- *      pass": one more read of the capture and one more waterfall, about 2.5 s on the radio; by default at most
+ *      pass": one more read of the capture and one more waterfall, about 2.5 s on the radio with the first build (a development figure); by default at most
  *      one, on a time grid shifted by half a row, and only if the first pass left evidence for it - js8_decode()).
  *      The reference is plain continuous-phase FSK (JS8Call does no Gaussian shaping): the frequency steps at the
  *      symbol edge.
@@ -69,12 +69,13 @@
 #define LEN_SYNC    7
 #define SYNC_OFFSET 36
 
-/* Defaults of 23 Nov 2026 (front-end work): the first measurements on the radio showed
+/* Defaults of 23 Nov 2026 (front-end work): development measurements of the first build on the radio (single stage times,
+ * not among the figures published in docs/PERFORMANCE.md) showed
  * ~2 s per pass over the capture (SD read + 184 FFTs) and ~28 ms per BP run, most of them wasted on noise candidates.
  *   min_score 10 (was 8), nsync2 / nsync34 10 (was 7): attempts 2, 3, 4 only for candidates with a clear Costas pattern
  *   swide 1, ev 9: ONE kind of residual pass (everything decoded so far subtracted, looking next to the new signals
  *     and the strong failures), made only when the pass before left evidence that it is needed; at most one on the
- *     shifted grid (shift 1) and one more on the normal grid (subpasses 2; the merge of 23 Nov 2026: with the faster
+ *     shifted grid (shift 1) and one more on the normal grid (subpasses 2; with the faster
  *     kernels and the streamed first pass the second one fits the time budget and brings the 20-signal yield back
  *     to that of the first build)
  *   foot 8, nbr 0x13: fewer attempts for the sidelobes of a decoded signal and the neighbours of a failed candidate
@@ -555,7 +556,7 @@ static int build_wf(ctx_t *c, int b_lo, int nb, uint8_t *mag, uint8_t *scr, sig_
  * (max_iters + 1) / 2 sweeps are made.  The early stop of WSJT-X / JS8Call (no progress in 5 checks after 10) is
  * kept.  The flooding float decoder this replaces (ft8_lib's bp_decode) is kept below under JS8_BP_SPA for the
  * host benchmark.  (A normalised min-sum, 7/8 of the smallest input, is about a third cheaper and equal on white
- * noise, but lost 2 of 547 frames on the real recordings - the overlapping pair of A_2_6 - so the exact rule is used.)
+ * noise, but lost the two frames of one overlapping pair on the off-air test recordings, so the exact rule is used.)
  * Returns the number of unsatisfied checks (0 = codeword in plain). */
 #ifndef JS8_BP_SPA
 static const uint8_t bxt[24] = { 6, 5, 5, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0 };   /* round(8 ln(1 + e^(-i/8))), 0 from i = 22 */
@@ -1441,7 +1442,7 @@ int js8_decode(const dsrc_t *src, float f_lo, float f_hi, float nominal_start_s,
          *   An S pass is made only when an N pass left candidates with a clear Costas pattern undecoded
          *   (nsync >= nstrong or sync score >= sstrong; noise alone did that in 1 of 200 periods).
          *   Such a signal typically sits between two waterfall rows with a neighbour on top of it: on the
-         *   off-air recording decode_air_test_1min the frame count used to depend on the capture start
+         *   crowded off-air test recording the frame count used to depend on the capture start
          *   (15..18 of 18 when it moved by 5 ms steps); with one S pass it is 17..18 at every start.
          *   The S pass looks next to those failures only (swide = 1: also next to the new signals).
          * At most `subpasses` N passes and `shift` S passes; with shift = 0 this is the FT8 app's scheme.
@@ -1488,7 +1489,7 @@ int js8_decode(const dsrc_t *src, float f_lo, float f_hi, float nominal_start_s,
              * looks next to the signals that are new since the last pass of its kind, the S pass also next to the
              * strong failures.  A pass is made only if the one before decoded something (or left such failures), and
              * the grids alternate, so "N0 S" already gives a station under a stronger one its chance (before: N0 S N1
-             * N2, where S looked at the failures only; each pass costs ~2 s on the radio). */
+             * N2, where S looked at the failures only; each pass cost ~2 s on the radio with the first build). */
             int more = c->nsig > before && (!js8_tune.ev || c->evid);
             int canS = nS < js8_tune.shift && (c->nsf > 0 || (js8_tune.swide && more));
             int canN = nN < js8_tune.subpasses && (js8_tune.swide ? more : c->nsig > lastN);   /* something new to subtract */

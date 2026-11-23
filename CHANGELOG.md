@@ -12,7 +12,7 @@ State of 23 November 2026.
 - The host simulator of the loader (`tests/js8sim.c`), a test signal generator and the test suites.
 - Tools: dictionary generator, fetch script for the SDK and the JS8Call reference files, SD-card file set.
 
-**Measured on the radio** (one IC-705 J, 7.078 MHz, 23 November 2026, default settings, 35 periods): decode time 2.7 s on average, 1.1 s for an empty period, 8.0 s once, no period cut, no audio gaps, no errors. Details and the history of earlier builds: `docs/PERFORMANCE.md`.
+**Measured on the radio** (one IC-705 J, 7.078 MHz, 23 November 2026, default settings, one run of 35 periods = under 9 minutes): decode time 2.7 s on average, 1.1 s for an empty period, 8.0 s once, no period cut, no audio gaps, no errors. Details and the history of earlier builds: `docs/PERFORMANCE.md`.
 
 **Not in it**
 
@@ -22,5 +22,6 @@ State of 23 November 2026.
 **Known issues**
 
 - Only submode Normal. No comparison with JS8Call yet.
-- At most 8 apps show in the radio's Apps list; many files in the Apps folder slow the app rescan.
+- The Apps list of the test radio showed at most 8 apps, and the app rescan was noticeably slow with the dictionary's 257 files in the Apps folder.
+- The firmware's PSKReporter spotting, DECODE > SET, beacon arming and row taps are not used by this app.
 - See "Limitations and known issues" in the README.

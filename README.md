@@ -6,7 +6,7 @@ This release is **receive only**. The app contains no transmit code and no netwo
 
 The code, the tests and the documentation were written by an AI coding assistant (Claude, by Anthropic) under the direction of Tomas Brincil OK1BT, who tested it on his radio. No human has reviewed the code line by line. See [How this was made](#how-this-was-made) and [`AUTHORS.md`](AUTHORS.md).
 
-**Read this first:** the project is new (November 2026). It has run on one radio. The table below says what was measured on that radio and what is known only from a PC simulator.
+**Read this first:** the project is new (November 2026). It has run on one radio, on one day, on one band, and the only timed run was 35 periods of 15 s - **under 9 minutes on the air**. The table below says what was measured on that radio and what is known only from a PC simulator.
 
 ## Status
 
@@ -15,8 +15,8 @@ Date of this status: 23 November 2026.
 | Feature | Status | Notes |
 |---|---|---|
 | Receive JS8 Normal: decode, text on the DECODE screen, multi-frame messages joined | **Tested on the radio** | One IC-705 (J version), firmware 20261119v14, live traffic on 7.078 MHz. |
-| Dictionary (JSC) on the SD card for compressed text | **Simulator; on the radio not recorded** | The dictionary lookup is tested in the simulator. The notes of the on-air runs do not say which dictionary files were on the card or how much of the live text went through them, so it is not listed here as tested on the radio. |
-| Decode time with the default settings | **Measured on the radio** | 35 periods on 40 m: 2.7 s on average, 1.1 s for an empty period. See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). |
+| Dictionary (JSC) on the SD card for compressed text | **Tested on the radio** | All 257 dictionary files were on the SD card during the on-air runs; dictionary-compressed text was shown as words and the app window showed `dict 5740`. How much of the live text went through the dictionary was not counted. |
+| Decode time with the default settings | **Measured on the radio** | One run of 35 periods (under 9 minutes) on 40 m: 2.7 s on average, 1.1 s for an empty period. See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). |
 | `JS8.CFG` keys `scope=`, decoder tuning keys, `JS8PERF.TXT` | **Used on the radio** | The measured run used `DEFAULT.CFG`. The `FAST` and `DEEP` presets of this code were not timed on the radio. |
 | Sensitivity, false decodes, behaviour with many signals | **Simulator only** | Generated signals and 19 recordings on a PC. See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). |
 | Comparison with JS8Call on the same audio | **Not done** | No claim of equal performance is made. |
@@ -28,14 +28,15 @@ Date of this status: 23 November 2026.
 
 ## Photos
 
-None yet. The owner will add photos of the DECODE screen and of the app window; `docs/img/README.md` lists what is planned.
+None yet; photos of the DECODE screen and of the app window are to follow. `docs/img/README.md` lists what is planned.
 
 ## Requirements
 
-- **Icom IC-705 with the custom firmware by Dawid SQ6EMM, release 20261119v14**, which contains the ICAP app loader. Firmware: <https://github.com/sq6emm/icom-custom-firmware>. SDK: <https://github.com/sq6emm/icap-sdk>. The app is built against SDK commit `3e3af4c` ("SDK update for firmware 20261119v14"). A newer firmware may need a rebuild.
+- **Icom IC-705 with the custom firmware by Dawid SQ6EMM, release 20261119v14**, which contains the ICAP app loader. Firmware (the author's patcher page, as his SDK documentation gives it): <https://sq6emm.github.io/icom-custom-firmware/>. SDK: <https://github.com/sq6emm/icap-sdk>. The app is built against SDK commit `3e3af4c` ("SDK update for firmware 20261119v14"). A newer firmware may need a rebuild.
 - **Radio versions tried: the J (Japan) version only.**
 - **An SD card** in the radio. The app, its dictionary and its files live in `\IC-705\Apps\`.
-- The radio's clock must be set accurately. JS8 periods start at :00, :15, :30 and :45.
+- **The radio's clock must be accurate, to within about a second.** JS8 periods start at :00, :15, :30 and :45, and the decoder looks for a frame only from about 2.2 s before to 2.4 s after its expected start (`docs/PROTOCOL.md`), so a clock that is off by more than about 2 s loses every decode. The easy way is to let the radio set its time from its GPS receiver; the setting is in the radio's time menu (see the Icom manual; we do not quote a menu label we did not check). The tolerance is taken from the code, it was not measured on the radio.
+- **A receive filter that passes the search band.** The app looks for signals between 450 and 2550 Hz of audio (the default; `flo=` / `fhi=`). A narrower filter in the data mode cuts stations off at the edges. Which filter setting the owner's radio had during the test was not recorded, and no filter setting was compared.
 
 ## Quick install on the SD card
 
@@ -51,30 +52,37 @@ make dist      # build/dist/IC-705/Apps/ and build/icap-js8-sdcard.zip
 
 `make fetch` has not been run over the network by us (see the status table); if it fails, `docs/BUILDING.md` says how to supply the files by hand.
 
-1. Copy the content of `build/dist/IC-705/Apps/` to `\IC-705\Apps\` on the radio's SD card with a card reader. That is:
+1. **Make room in the app list first.** On the owner's radio the Apps list showed at most 8 apps; further `.APP` files on the card did not appear in it. The SDK's app table alone names nine apps (Q65, FT8, JT4, PI4, WSPR, FETCH, CLOCK, SPEED, SYSINFO) and the firmware brings `APRS.APP`, so a card that holds the whole bundle may have no free place and `JS8` may not show up. If that happens:
+   - **move** the `.APP` file of one or two apps you do not use from `\IC-705\Apps\` to your computer, so that you can put them back later;
+   - touch only files whose name ends in `.APP` and that you know to be apps. **Leave every other file of the firmware release where it is**: the SDK says that parts of the loader runtime are files in this same folder and must match the firmware image. Leave `APRS.APP` alone if you use the firmware's APRS mode, which starts it by itself.
+
+   What we do not know: which apps were on the owner's card (it was not recorded), by which rule the list picks its 8 entries, and whether an app that is missing from the list still gets its mode. We saw the limit; we did not examine it.
+2. Copy the content of `build/dist/IC-705/Apps/` to `\IC-705\Apps\` on the radio's SD card with a card reader. These are the files of this app, 259 in all:
    - `JS8.APP` - the app (59 kB);
    - `JSCHEAD.BIN` and `JSCD000.BIN` .. `JSCD0FF.BIN` - the JS8Call dictionary for receiving, 257 files, 1.95 MB;
    - `JS8.CFG` - optional configuration (the sample from `sd/JS8.CFG`).
-2. On the radio: MENU > SET > Apps should list `JS8`.
-3. Tune to a JS8 frequency (for example 7.078 or 14.078 MHz dial) and select the mode **JS8**: on the MODE screen press the RTTY button repeatedly; the loader adds the app's mode to the cycle after RTTY and RTTY-R. The radio switches to USB-D, opens the DECODE screen and starts the app. The first decodes appear after the first complete 15 s period.
+3. On the radio, open the app list: MENU, then the Apps entry that the custom firmware adds (the SDK documentation gives the path as MENU > SET > Apps). It should list `JS8`. You do not have to start the app there.
+4. Tune to a JS8 frequency (for example 7.078 or 14.078 MHz dial) and select the mode **JS8**: press the RTTY mode button repeatedly; it cycles RTTY, RTTY-R, the decoder modes of the installed apps and among them JS8. The radio switches to USB-D, shows the DECODE screen and starts the app. The first decodes appear after the first complete 15 s period.
+5. To stop the app, select another mode (the SDK: leaving the mode stops the app). To look at its status window, see [The app window](#the-app-window-8-lines-of-40-characters-times-in-ms).
+
+**Uninstall:** select another mode, then delete from `\IC-705\Apps\` the files of this app and the files it wrote: `JS8.APP`, `JS8.CFG`, `JSCHEAD.BIN`, `JSCD000.BIN` .. `JSCD0FF.BIN`, `JS8CAPA.PCM`, `JS8CAPB.PCM`, `JS8LOG.TXT`, `JS8MSG.TXT`, `JS8PERF.TXT` and the archives `JS8L0001.TXT` ..., `JS8M0001.TXT` ... (in short `JS8.APP`, `JS8.CFG`, `JSC*.BIN`, `JS8*.PCM`, `JS8*.TXT`). The app writes nowhere else and changes no setting of the radio. Put back any `.APP` file you moved away in step 1.
 
 Things to know:
 
-- **The Apps list shows at most 8 apps** (seen on the radio). Further `.APP` files on the card are silently missing from the list. Remove one if `JS8` does not show up.
-- **Many files in the Apps folder slow the app rescan down** (seen on the radio). The dictionary adds 257 files to that folder. Moving it out of the Apps folder is on the roadmap.
+- **The app rescan was noticeably slow with the dictionary in the Apps folder** (seen on the owner's radio, with about 260 extra files there). Moving the dictionary out of the Apps folder is on the roadmap.
 - **Without the dictionary the app still runs.** Compressed frames are then shown raw, as `#` and 12 characters, and the app window says `JS8: no dictionary (JSCHEAD.BIN)`. (Simulator.)
 - **An incomplete copy of the dictionary is not reported.** If `JSCHEAD.BIN` is there but some `JSCDxxx.BIN` files are missing or damaged, the words from those files appear as `{?}` in the text and in the logs, and the app window still says `no errors`. Check that all 257 files were copied and that line 6 of the app window reads `dict 5740`. (Simulator.)
 - **Copying over Wi-Fi instead of a card reader:** the SDK has an app, `FETCH.APP`, that downloads files from an HTTP server of your own. Its source limits a server folder to 64 files (`MAX_FILES` in the SDK's `apps/fetch/fetch.c`), so the dictionary would have to be spread over several folders. This route is not described here; see the SDK.
 
 ## Configuration: JS8.CFG
 
-Optional text file in the Apps folder: `key=value` entries separated by blanks or line ends. There is no comment syntax. The app reads the first 399 bytes, once, at start.
+Optional text file in the Apps folder: `key=value` entries separated by blanks or line ends. There is no comment syntax. The app reads the first 399 bytes, once, at start. Put `scope=` on a line of its own: that key is read by the loader, the SDK describes `.CFG` files as one `key=value` per line, and a line of its own is the only form that was tried on the radio.
 
 The parser is strict and silent: keys are lower case, there must be no blank on either side of `=`, and the file must be plain ASCII without a byte-order mark (some Windows editors add one; it hides the first key). An entry it does not understand is ignored without a note. Lines 0 and 1 of the app window show the call, the band and the tuning that were really applied; look there after changing the file. (Simulator.)
 
 | Key | Meaning | Default |
 |---|---|---|
-| `scope=450-2550` | read by the **loader**, not by the app: span of the mini-scope for the mode (works on the radio) | - |
+| `scope=450-2550` | read by the **loader**, not by the app: span of the mini-scope for the mode. Worked on the radio as a line of its own, as in `sd/JS8.CFG`; no other form was tried. | - |
 | `flo=`, `fhi=` | search range for the audio frequency of the lowest tone, Hz. A wider range works but needs two passes over the band and takes longer; a range narrower than 100 Hz is refused. | 450, 2550 |
 | `call=` | own call sign, used when the radio has none set | the radio's |
 | `groups=` | group calls marked as "to my group" in the message log, e.g. `groups=@ALLCALL,@OK` | none |
@@ -100,7 +108,7 @@ Decoder tuning keys (out-of-range values are clamped):
 
 ### Presets
 
-Three ready-made settings are in `sd/presets/`. To use one, copy it to the card as `JS8.CFG` (add `scope=450-2550` if you want the scope span set).
+Three ready-made settings are in `sd/presets/`. To use one, copy it to the card as `JS8.CFG`. If you want the scope span set, add `scope=450-2550` as a line of its own, as in `sd/JS8.CFG`.
 
 | File | Settings | What it is |
 |---|---|---|
@@ -139,6 +147,8 @@ The SNR is the decoder's own estimate. It has not been compared with what JS8Cal
 
 ### The app window (8 lines of 40 characters, times in ms)
 
+The DECODE screen shows decodes only; the app's status is in its own window. To open it while the mode JS8 is active: MENU, then the Apps entry that the custom firmware adds, then tap `JS8` in the list. (The SDK documentation gives the path as MENU > SET > Apps; we describe the entry instead of quoting a label we did not write down.) EXIT hides the window again and the app keeps running: it is packed as a background app, for which the SDK describes exactly that. To stop the app, select another mode.
+
 | Line | Example | Content |
 |---|---|---|
 | 0 | `JS8 RX OK1ABC 450-2550 Hz` | own call, search band |
@@ -171,7 +181,13 @@ The logs contain the call signs heard on the air. The archive is a ring of `keep
 - **One radio.** Everything measured comes from one IC-705 (J version) on one day (23 November 2026) on 40 m.
 - **Overlapping stations.** Two stations on nearly the same audio frequency: sometimes only one is read. Messages are joined per audio frequency, so two stations on top of each other can have their texts joined into one message.
 - **A period that takes longer than `budget=`** ends with the frames found so far and the note `decode out of time`.
-- **8-app limit and slow rescan** of the Apps folder, see above.
+- **8 apps in the list and a slow rescan** of the Apps folder, as seen on one radio; see "Quick install".
+- **Firmware features of a decoder mode that this app does not use.** The firmware offers every decoder mode more than this app takes up. The following comes from the app's source code and the SDK documentation; what the radio shows when you try was not recorded.
+  - *No PSKReporter spots.* The app never writes the firmware's `@SPOT` file, so nothing is reported, whatever PSKREPORT is set to. The SDK's own decoders do report.
+  - *DECODE > SET is ignored.* The app does not read `@MODECFG`, where the firmware hands over the settings made there (SUBMODE, PSKREPORT, a search range). Use `JS8.CFG`.
+  - *Arming the beacon does nothing.* A long press of the mode tile arms the firmware's beacon for a decoder mode (the SDK: a red frame on the emission button). This app has no transmit code and never asks for a transmission, so nothing is sent.
+  - *Tapping a decoded row does nothing.* The QSO mode of the SDK's FT8, Q65 and JT4 apps starts from such a tap; this app does not read the taps.
+- **SD card writes.** Every 15 s period is stored on the card before it is decoded (as the SDK's reference decoders do): one capture file of about 234 kB per period, which is about 56 MB per hour or 1.3 GB per day of listening, written over the same two files again and again, plus `JS8PERF.TXT` and the logs. `perf=0` saves one small file write per period. The figures are arithmetic from the capture size, not a measurement; keep them in mind before leaving the app on for days.
 - **A message that is being received when the app is left** is closed as incomplete.
 - **A full SD card stops decoding.** The app needs about 0.5 MB for its two capture files and, with `keep=200`, up to about 2 MB for log archives. The decoder reads the capture back from the card, so when writes fail nothing is decoded (the app window shows `JS8: SD write error`), and in the simulator the log file that was being rewritten ended up empty. Not tried on the radio.
 - **Silent configuration mistakes**, see "Configuration" above.
@@ -180,9 +196,9 @@ The logs contain the call signs heard on the air. The archive is a ring of `keep
 
 ## Safety and legal
 
-- **The custom firmware is not from Icom.** Installing it voids the warranty, and a failed installation can leave the radio unable to start. This project is not the firmware and cannot help with it. Read the firmware project's own instructions and warnings, and decide for yourself.
+- **The custom firmware is not from Icom.** Its author states that modifying radio firmware is done at your own risk and your own responsibility for complying with local regulations and your licence; do not expect Icom to support a modified radio. This project is not the firmware and cannot help with it. Read the firmware project's own instructions first, and decide for yourself.
 - **This repository contains no Icom code**, no firmware images and nothing derived from them. It builds against the public ICAP SDK, which you fetch yourself.
-- **An ICAP app is not sandboxed in any strong sense.** Install apps only from sources you trust, and that includes this one: it was written with an AI assistant and no human has reviewed it line by line.
+- **Install apps only from sources you trust, and that includes this one.** The SDK describes the app task as sandboxed and of the lowest priority, says that a fault in an app ends only the app, and also says that an app which breaks its rules can freeze the radio. We have not tested what the loader prevents. This app was written with an AI assistant and no human has reviewed it line by line.
 - **The app cannot transmit.** It contains no call to the loader's transmit or network services, and the test suite checks the sources for that (`make e2e`; a check of the source text, with or without an ARM compiler).
 - **What does change on the radio:** selecting the mode JS8 makes the *loader* switch the radio to USB-D, because the app registers its mode that way. The app itself changes no radio setting (the SDK gives an app no service for setting the frequency or the mode), does not start by itself, and writes only into the Apps folder of the SD card.
 - **No warranty.** See `LICENSE`.
@@ -212,7 +228,7 @@ Use the issue tracker of this repository. Helpful in a report:
 
 - radio version (E, J, ...) and firmware release;
 - which build (commit) and your `JS8.CFG`;
-- lines 1, 2, 3 and 7 of the app window;
+- lines 1, 2, 3 and 7 of the app window (how to open it: "The app window" above);
 - `JS8PERF.TXT`, and the `JS8LOG.TXT` of the time in question if you are willing to share it (it contains call signs heard on the air);
 - for a decoding problem, a recording (8000 Hz, mono, 16 bit) that shows it is the most useful thing of all.
 
@@ -220,10 +236,10 @@ Problems with the firmware or the loader itself belong to the firmware project, 
 
 ## How this was made
 
-- **The idea, the direction, the testing on the radio and the photos** are by Tomas Brincil OK1BT. He set the goals and the rules, installed the builds on his own IC-705, ran them on the air and reported what the radio really did.
+- **The idea, the direction and the testing on the radio** are by Tomas Brincil OK1BT. He set the goals and the rules, installed the builds on his own IC-705, ran them on the air and reported what the radio really did.
 - **The code, the tests and the documentation were written by Claude**, Anthropic's AI model, working as a coding assistant under his direction in November 2026. Separate runs of the assistant reviewed the work; the reviews found real faults, which were corrected. No human has reviewed the code line by line.
 - **It is built on Dawid SQ6EMM's ICAP loader, SDK and FT8 app.** The decoder is a fork of the SDK's FT8 decoder, the app shell reuses the capture loop of his `digiapp.c`, and two of his files are used unmodified. Through the FT8 decoder it also stands on ft8_lib by Kārlis Goba YL3JG.
-- **The protocol knowledge comes from JS8Call** by Jordan Sherer KN4CRD and from the JS8Call and JS8Call-improved contributors: frame formats, tables and the dictionary. JS8 in turn stands on FT8 and the work of the WSJT-X team.
+- **The protocol knowledge comes from the published sources of JS8Call** by Jordan Sherer KN4CRD and its contributors, and of the JS8Call-improved project: frame formats, tables and the dictionary. JS8 in turn stands on FT8 and the work of the WSJT-X team.
 
 Who did what: [`AUTHORS.md`](AUTHORS.md). Whose work it builds on: [`CREDITS.md`](CREDITS.md). None of the people named there has reviewed or endorsed this project.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tomas Brincil OK1BT. Written by Claude (Anthropic) under his direction; see AUTHORS.md.
-"""Independent Python model of the JS8 encoder, used to cross-check the C code (T0/T1).
+"""Independent Python model of the JS8 encoder, used to cross-check the C code (make t0, make t1).
 
 It deliberately does NOT use the generated C header: it reads the original JS8Call source
 files as DATA (js8call/js8call@a7ff1be, fetched by tools/fetch_refs.sh) and follows the Fortran

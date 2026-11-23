@@ -14,19 +14,20 @@ A 15 s period leaves about 14.6 s to decode the previous one; a decode that is n
 | Build | Settings | Decode time per period |
 |---|---|---|
 | First build | exhaustive decoding, no tuning keys | 7.7 to 9.8 s on average; cut at 15 s in busy periods |
-| Instrumented build | its reduced FAST preset | about 4 s on average; 2.6 s for an empty period |
-| **This release** (streaming front end, faster kernels) | `DEFAULT.CFG`: `minscore=10 nsync=7 ns34=10 passes=31 iters=30 sub=1 shift=1 wide=1 stream=1 budget=8000` | **2.7 s on average over 35 periods; 1.1 s for an empty period; 8.0 s once; 0 periods cut; 0 audio gaps; no errors** |
+| Instrumented build | its reduced FAST preset | about 4 s on average |
+| **This release** (streaming front end, faster kernels) | `DEFAULT.CFG`: `minscore=10 nsync=7 ns34=10 passes=31 iters=30 sub=1 shift=1 wide=1 stream=1 budget=8000` | **2.7 s on average over one run of 35 periods (under 9 minutes); 1.1 s for an empty period; 8.0 s once; 0 periods cut; 0 audio gaps; no errors** |
 
 Notes on the last row:
 
 - The single 8.0 s period sits at the `budget=8000` limit. It was not counted as ended early: the counter `c` stayed 0 and no note was shown, and `c` includes periods ended by `budget=`. By our reading of the code the decode therefore finished on its own just under the limit, after the budget had kept further residual passes from starting. It was most likely the first period after the app started, when the first waterfall cannot be built during the capture; that explanation is an inference, not a measurement.
 - "0 periods cut" means: no period ended early, neither by the hard limit (the next capture) nor by `budget=`.
-- First live decodes on 7.078 MHz, including multi-frame messages joined on the DECODE screen, were seen on the same day.
+- First live decodes on 7.078 MHz, including multi-frame messages joined on the DECODE screen, were seen on the same day. The 257 dictionary files were on the SD card during the on-air runs; dictionary-compressed text was shown as words, and the app window showed `dict 5740`.
 - The first two rows are earlier builds that are not in this repository. They are listed to show where the time went; the FAST preset of that instrumented build is not the `FAST.CFG` of this release.
 - `FAST.CFG` and `DEEP.CFG` of this release have **not** been timed on the radio.
-- One radio, one band, one day (23 November 2026), 35 periods. How busy the band was in each period was not recorded.
+- One radio, one band, one day (23 November 2026), one timed run of 35 periods of 15 s: under 9 minutes. How busy the band was in each period was not recorded.
+- Comments in the sources (`src/js8dec.c`, `src/js8dec.h`, `tests/js8synth.h`) quote times of single decoder stages on the radio. Those are development notes from the two earlier builds, taken once on the same day to decide where to save time and to calibrate the timing model of section 2. They are not part of the measurements published here.
 
-Loader facts seen on the same radio: the Apps list shows at most 8 apps; many files in the Apps folder slow the app rescan; `scope=450-2550` in `JS8.CFG` sets the mini-scope span; DECODE rows longer than 40 characters wrap.
+Seen on the same radio, and not examined further: the Apps list showed at most 8 apps; the app rescan was noticeably slow with about 260 extra files in the Apps folder; a `scope=450-2550` line of its own in `JS8.CFG` set the mini-scope span; DECODE rows longer than 40 characters wrapped when the mini-scope was shown.
 
 ## 2. Simulator results (PC)
 
@@ -50,7 +51,7 @@ The white-noise figures are for an ideal signal in Gaussian noise. Real channels
 
 ### What cannot be taken from the simulator: speed
 
-Before the app ran on a radio, decode time was estimated from PC timings, and the estimate was too low. For the decoder of this release a timing model calibrated on the radio's own stage times predicted about 2.4 s on a busy recording and 0.2 s for an empty band; the radio measured 2.7 s on average and 1.1 s empty. Treat any PC-derived time as a rough guess.
+For the decoder of this release a timing model calibrated on stage times of the earlier builds on the radio predicted about 2.4 s on a busy recording and 0.2 s for an empty band; the radio measured 2.7 s on average and 1.1 s empty. Treat any PC-derived time as a rough guess.
 
 For orientation only, PC times of the decoder alone (one core of an x86 PC, default settings): about 5 ms for an empty band, 28 ms for a busy recording, 70 ms for 20 signals in a period.
 

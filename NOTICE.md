@@ -190,7 +190,7 @@ SOFTWARE.
   "Icom" and "IC-705" are trademarks of Icom Inc.; this project is independent and
   not affiliated with or endorsed by Icom.
 - **No custom firmware.** The ICAP loader the app runs under is part of the custom
-  firmware by Dawid SQ6EMM (<https://github.com/sq6emm/icom-custom-firmware>) and
+  firmware by Dawid SQ6EMM (<https://sq6emm.github.io/icom-custom-firmware/>) and
   is obtained from there.
 - **No test recordings.** The receiver was tested with recordings made by others.
   They are not redistributed; see [`CREDITS.md`](CREDITS.md) for where they come

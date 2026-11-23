@@ -14,7 +14,7 @@ his `wsprapp.c`, `digi_util.c/.h` are his files
 unmodified, and the app is built with his SDK header, start-up code, link script
 and packer.
 <https://github.com/sq6emm/icap-sdk> ·
-<https://github.com/sq6emm/icom-custom-firmware>
+<https://sq6emm.github.io/icom-custom-firmware/>
 
 **Jordan Sherer KN4CRD** - creator of JS8 and JS8Call. The protocol, the frame
 formats, the Huffman table, the directed commands and group calls, and the
@@ -26,7 +26,7 @@ files for the SD card are generated from his `jsc_list.cpp`.
 **The JS8Call and JS8Call-improved contributors** - among them **Allan Bazinet
 W6BAZ**, whose C++ port of the JS8 encoder and decoder (`JS8.cpp`, "(C) 2025 Allan
 Bazinet") we read next to the original Fortran, and the JS8Call-improved team,
-who keep JS8Call alive and publish the off-air test recordings we used. Where
+who maintain that fork and publish the off-air test recordings we used. Where
 JS8Call and JS8Call-improved differ in the handling of the dictionary's `size`
 field, we follow JS8Call-improved.
 <https://github.com/JS8Call-improved/JS8Call-improved>

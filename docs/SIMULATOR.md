@@ -11,8 +11,8 @@ The simulator ships as it is: a test harness for this one app.
 Stated first, so that nobody is misled:
 
 - **It does not run the ARM binary.** The app is recompiled for the PC. Faults that exist only in the ARM build (compiler differences, relocation, alignment, stack depth inside loader services) are invisible to it. There is no emulator.
-- **It does not know how fast the radio is.** It has two models of a slow processor, both arbitrary. Decode times estimated from the PC were too low; see `docs/PERFORMANCE.md`.
-- **It is a model of the loader written from the SDK's documentation and from a few observations**, not from the loader's source, which is not public. Where the real behaviour was not known, the simulator guesses.
+- **It does not know how fast the radio is.** It has two models of a slow processor, both arbitrary. Treat decode times derived from the PC as a rough guess; what a timing model predicted and what the radio measured is in `docs/PERFORMANCE.md`.
+- **It is a model of the loader written from the SDK's documentation and from a few observations**, not from the loader's source, which we have not seen. Where the real behaviour was not known, the simulator guesses.
 - **It is tied to the JS8 app.** See "Using it for another app" below.
 
 Nothing in it transmits or touches a radio.
@@ -26,7 +26,7 @@ The SDK hands an app one thing: a table of function pointers (`struct icap_svc`)
 | Audio in | Samples from a WAV or raw PCM file (8000 Hz, mono, 16 bit) on a virtual clock. Sample 0 sits on a 15 s period edge of the fake clock. Silence before and after the file. A ring of limited size: unread audio beyond it is an overrun, as on the radio. |
 | Clock, sleep | Virtual time. A sleep advances the clock without waiting, so an hour of operation runs in seconds. |
 | Files | A directory on the PC with the loader's rules as the SDK documents them: names of `A-Z 0-9 _ - .` up to 48 characters, at most 4 files open, no append, no seek, opening for writing empties the file. A read-only overlay directory (`-J`) lets many runs share one copy of the dictionary. |
-| Virtual files | `@MYCALL` and `@CLOCK`. Any other `@name` fails as on the radio. |
+| Virtual files | Only `@MYCALL` and `@CLOCK` are modelled. The other virtual files of the firmware (`@MYLOC`, `@FREQ`, `@TX`, `@MODECFG`, `@SPOT`, `@QSO` ...) fail here with `ICAP_E_NAME`, which is the answer the SDK documents for firmware without them. The JS8 app opens only `@MYCALL`. |
 | DECODE screen, app window, pop-up | Printed to standard output as `D`, `W<n>` / `L<n>` and `U` lines. |
 | Stop request | Polled by the app; the simulator ends the run after the file plus a tail (`-T`). |
 | Transmit and network services | Present in the table because the SDK's table has them, but they only **count** calls. The summary line must show `tx_calls=0 net_calls=0`, and the test suite checks that. |
@@ -115,6 +115,6 @@ To try it with your app as things stand: copy `tests/js8sim.c`, replace the incl
 
 ## What the simulator got wrong or could not tell us
 
-- **Speed.** Decode times predicted from PC timings were too low. What was predicted and what the radio measured is in `docs/PERFORMANCE.md`.
+- **Speed.** For this release a timing model predicted 2.4 s for a busy recording and 0.2 s for an empty band; the radio measured 2.7 s on average and 1.1 s for an empty period (`docs/PERFORMANCE.md`). PC-derived times are a rough guess.
 - **Screen width.** The simulator accepted DECODE rows of up to 63 characters, the limit of the service. On the radio rows wrap at about 40 characters when the mini-scope is shown; the app and the simulator's check were changed to 40.
-- **The app list and the rescan.** That the radio lists at most 8 apps and that many files slow the rescan was seen on the radio only.
+- **The app list and the rescan.** That the Apps list showed at most 8 apps and that the rescan was slow with about 260 extra files in the folder was seen on the owner's radio only; the simulator has no model of either.

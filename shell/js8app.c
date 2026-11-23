@@ -16,7 +16,7 @@
  * RX ONLY: this app contains no transmit, beacon or network code - it never calls the loader's
  * transmit or network services.
  *
- * Everything runs in the radio (owner decision 23 Nov 2026):
+ * Everything runs in the radio:
  *   js8dec  audio -> 87-bit frames (LDPC + CRC-12 verified)
  *   js8msg  frame -> the text JS8Call shows for it (JSC dictionary = files JSC*.BIN in the app
  *           folder, tools/mkjsc.py; without them the app still runs and compressed frames are

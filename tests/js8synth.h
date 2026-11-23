@@ -172,8 +172,8 @@ SY_U static int sy_tune(const char *spec)
 /* ---- model of the radio's decode time from the decoder's deterministic counters (js8_stats).
  * ms per: FFT row (window + FFT + power -> dB of the default 344-bin band), 1000 sync scores, BP iteration,
  * signal x row subtracted, 1000 samples read from the capture (640 per chunk), bit-metric vector, abort poll, and a fixed part
- * per period.  The default (SY_MODEL) is calibrated on the RADIO's own stage times (instrumented app, 23 Nov 2026,
- * live 40 m band):
+ * per period.  The default (SY_MODEL) is calibrated on the RADIO's own stage times (instrumented earlier builds, 23 Nov 2026,
+ * live 40 m band; development figures taken once, not among the measurements published in docs/PERFORMANCE.md):
  *   empty period (FAST preset): SD read 667 ms for one pass over the capture (116800 samples: 5.71 ms / 1000),
  *     STFT 1313 ms for 184 rows (7.14 ms / row), search 316 ms for 40440 scores (7.81 ms / 1000), total 2642 ms
  *     - the 345 ms on top of the stages are the abort polls = the capture pump of the next period, 13 % of the
@@ -182,11 +182,11 @@ SY_U static int sy_tune(const char *spec)
  *     per run (PC counters, same kind of load) 1.15 ms per iteration incl. the bit metrics;
  *   subtraction: 442 ms in that period; per signal x row chunk it is the PC cost scaled like the FFT, 0.36 ms.
  * That is SY_MODEL_OLD: the cost per operation of the first build's kernels (float flooding BP, radix-2 FFT, log10).
- * SY_MODEL (default) is for the kernels of this build, which have NOT run on the radio yet: SY_MODEL_OLD times the
- * ratio new / old measured per stage on the PC on the same inputs (merge of 23 Nov 2026: STFT row 0.37, sync search
+ * SY_MODEL (default) is for the kernels of this build and was made before this build ran on the radio: SY_MODEL_OLD times the
+ * ratio new / old measured per stage on the PC on the same inputs (STFT row 0.37, sync search
  * 0.36, one layered BP sweep against one flooding iteration 0.76, subtraction 0.27; the SD read is left at 1.0
- * although it is now 58 block reads per pass instead of about 370 calls).  x86 and the Cortex-A9 differ, so +-40 %; the
- * first JS8PERF.TXT of this build replaces these numbers (-K).
+ * although it is now 58 block reads per pass instead of about 370 calls).  x86 and the Cortex-A9 differ, so +-40 %.  The
+ * radio then measured 2.7 s on average with this build (docs/PERFORMANCE.md); a JS8PERF.TXT can replace these numbers (-K).
  * Rows made by the streaming front end during the capture are not in js8_stats and so cost nothing here. */
 #define SY_MODEL_OLD "8.07,8.83,1.30,0.41,6.45,0,0,0"   /* radio stage times of 23 Nov 2026, x 1.13 for the capture pump */
 #ifndef SY_MODEL

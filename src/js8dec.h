@@ -95,7 +95,7 @@ int js8_decode(const dsrc_t *src, float f_lo, float f_hi, float nominal_start_s,
 
 /* Streaming front end (optional): build the waterfall of the first pass WHILE the period is captured, so
  * that after the period only the search and the decoding remain (on the radio one pass over the capture
- * costs about 2 s: SD read + 184 FFTs).
+ * cost about 2 s with the first build: SD read + 184 FFTs; a development figure).
  *   js8_stream_begin  work/work_len/fs/f_lo/f_hi/nominal_start_s exactly as the later js8_decode() call will
  *                     get them; max_len = the longest capture (samples); pos = index of the first sample that
  *                     will be fed (0 = from the start of the capture; > 0: the rows before it are built by

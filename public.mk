@@ -71,12 +71,13 @@ else
 $(REC_TARGETS):
 	@echo "SKIP  $@: needs off-air recordings (make $@ RECORDINGS=<dir with 8k/*.8k.wav>); none are shipped"
 endif
-# align, and parts of arena and prof, use one particular crowded recording by name ($(AIR)); without it they skip
+# align, and parts of arena and prof, use one particular crowded recording ($(AIR), found by the end of its file
+# name); without it they skip
 ifneq ($(wildcard $(AIR)),)
 align: align-rec
 else
 align:
-	@echo "SKIP  $@: needs the recording $(notdir $(AIR)) in RECORDINGS/8k; it is not shipped"
+	@echo "SKIP  $@: needs one particular recording (*__decode_air_test_1min.8k.wav) in RECORDINGS/8k; it is not shipped"
 endif
 
 # make test: everything that needs no recording.

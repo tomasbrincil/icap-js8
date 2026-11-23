@@ -1,6 +1,6 @@
 # The JS8 protocol as this receiver implements it
 
-This is a description of what the code in `src/` does, written for people who want to read or check it. It is **not** a specification of JS8. The authority on JS8 is JS8Call by Jordan Sherer KN4CRD (<https://github.com/js8call/js8call>) and its successor JS8Call-improved; everything here was learned from their published sources, and where this text and JS8Call disagree, JS8Call is right. The licences of what was taken from there are in `NOTICE.md`.
+This is a description of what the code in `src/` does, written for people who want to read or check it. It is **not** a specification of JS8. The authority on JS8 is JS8Call by Jordan Sherer KN4CRD (<https://github.com/js8call/js8call>); the community fork JS8Call-improved (<https://github.com/JS8Call-improved/JS8Call-improved>) was read as well. Everything here was learned from their published sources, and where this text and JS8Call disagree, JS8Call is right. The licences of what was taken from there are in `NOTICE.md`.
 
 Only submode **Normal** is implemented, and only **receiving**.
 
@@ -41,7 +41,7 @@ The first payload bits select the type (values 0 to 6 as in JS8Call's `Varicode:
 | 6 | data: free text compressed with the JSC dictionary |
 | 7 | "fast" data, JSC text. Not a JS8Call `FrameType` value: JS8Call marks these frames with the data flag (i3bit 4), and this code gives them the internal number 7 |
 
-`src/js8msg.c` turns one frame into the text JS8Call would show for it. Its tables (Huffman code, the directed commands, the 54 group calls) are derived from JS8Call's `varicode.cpp`.
+`src/js8msg.c` turns one frame into text; it is meant to produce the text JS8Call shows, which was compared with our reading of `varicode.cpp` and not with the running program. Its tables (Huffman code, the directed commands, the 54 group calls) are derived from JS8Call's `varicode.cpp`.
 
 ## 4. The JSC dictionary
 
@@ -64,7 +64,7 @@ The dictionary is (C) 2018 Jordan Sherer KN4CRD, GPL-3.0-or-later. The files are
 - compound-call frames are joined with the frames that follow;
 - commands that carry a checksum (`>`, `MSG`, `MSG TO:`, `QUERY`, `CMD`) are verified with CRC-16/KERMIT;
 - 60 s without a frame closes a message as incomplete;
-- a message is at most 1023 characters here; JS8Call has no limit.
+- a message is at most 1023 characters here (we found no such limit in our reading of the JS8Call sources).
 
 Because streams are keyed by frequency only, two stations on the same audio frequency can have their frames joined into one message.
 

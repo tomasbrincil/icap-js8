@@ -7,29 +7,29 @@
 # core sources need no libc.
 #
 #   make            build the tools and tests
-#   make test-core  T0 + T1 (incl. 1000 random frames vs tests/model.py) + freestanding check
+#   make test-core  table tests + encoder tests (incl. 1000 random frames vs tests/model.py) + freestanding check
 #   make c2         generate WAVs and check them with the spectrum tool
 #   make check      test-core + c2
 #   make dec        build the decoder test bench (js8wav, js8sweep, ft8ref; needs the SDK checkout)
-#   make t2         T2 clean loopback sweep (f0 500..2500 Hz in 1.3 Hz steps, dt -2..+2 s), must be 100 %
-#   make t3         T3 AWGN sweep -28..-10 dB (104 trials per step, each pass alone and all), ~3 min on 8 cores
+#   make t2         clean loopback sweep (f0 500..2500 Hz in 1.3 Hz steps, dt -2..+2 s), must be 100 %
+#   make t3         white-noise (AWGN) sweep -28..-10 dB (104 trials per step, each pass alone and all), ~3 min on 8 cores
 #   make multi      20 signals per period incl. pairs 6.25 Hz and 50 Hz apart, with / without subtraction
 #   make false      false decodes: 1000 noise-only periods, 200 periods of FT8-only audio
 #   make ft8time    decode time against the unmodified FT8 decoder of the SDK on the same load
 #   make real       every recording in $(SAMPLES) through js8wav -a -u
 #   make deccheck   t2 + t3 + multi + false + ft8time + real (logs in $(BUILD)/logs, $(BUILD)/real)
 #   make real-t0    every recording through js8wav -t 0 (file start = period edge) -> $(BUILD)/real/<name>.t0.txt
-#   make apparena   T2 and one T3 pass with the RADIO APP's arena (APP_ARENA bytes), both bands (one pass / two passes)
-#   make t3seed     one T3 run with a seed taken from the clock (independent confirmation of the thresholds)
+#   make apparena   the clean sweep and one noise sweep with the RADIO APP's arena (APP_ARENA bytes), both bands (one pass / two passes)
+#   make t3seed     one noise sweep with a seed taken from the clock (independent confirmation of the thresholds)
 #   make arena      arena peak (planned layout) for band / arena combinations + guard-page runs -> logs/arena.log
 #   make abort      abort test (js8wav -A N) -> logs/abort.log
 #   make snrcal     reported SNR against the true SNR, -18 .. +20 dB -> logs/snr_cal.log
 #   make osd-exp    the OSD experiment (js8sweep_osd; the radio build has no OSD)
-#   make align      capture-start sweep 0..75 ms on the crowded off-air recording, both bands -> logs/align.log
-#   make stream     streaming front end: same frames and candidates with / without it (recordings, T2) -> logs/stream.log
+#   make align      capture-start sweep 0..75 ms on one crowded recording of the private set (skipped without it), both bands -> logs/align.log
+#   make stream     streaming front end: same frames and candidates with / without it (recordings, clean sweep) -> logs/stream.log
 #   make coreextra  real-t0 apparena t3seed arena abort snrcal align (the decoder numbers beyond deccheck)
 #   make prof       where a period's work goes: stage times + operation counters (tests/js8prof.c) for an empty band,
-#                   the busy off-air recording, 20 signals per period and noise, app arena and band -> logs/prof.log
+#                   a crowded recording of the private set (left out without it), 20 signals per period and noise, app arena and band -> logs/prof.log
 #   make kbench     inner kernels: STFT row against a double-precision windowed DFT (cells that differ), time per STFT row,
 #                   per BP iteration and per subtracted signal x row; the same with the reference BP (-DJS8_BP_SPA) -> logs/kbench.log
 #   make t6 / rv / fuzz   message layer tests / independent protocol model / sanitizer + fault-injection suite
@@ -132,12 +132,12 @@ $(BUILD)/ft8ref: tests/ft8ref.c tests/js8synth.h $(FT8_O) $(DEC_O) $(CORE_O)
 $(LOGS):
 	mkdir -p $@
 
-# T2: exit code 1 unless every frame decodes with |df| <= 1 Hz and |ddt| <= 0.05 s
+# t2: exit code 1 unless every frame decodes with |df| <= 1 Hz and |ddt| <= 0.05 s
 t2: $(BUILD)/js8sweep | $(LOGS)
 	$(BUILD)/js8sweep clean > $(LOGS)/t2_clean_nonoise.log; r=$$?; tail -1 $(LOGS)/t2_clean_nonoise.log; [ $$r = 0 ]
 	$(BUILD)/js8sweep clean -N 300 > $(LOGS)/t2_clean_noise300.log; r=$$?; tail -1 $(LOGS)/t2_clean_noise300.log; [ $$r = 0 ]
 
-# T3: 8 jobs x 13 trials = 104 trials per 1 dB step; passmask 1,2,4,8,16 = each pass alone, 31 = default
+# t3: 8 jobs x 13 trials = 104 trials per 1 dB step; passmask 1,2,4,8,16 = each pass alone, 31 = default
 t3: $(BUILD)/js8sweep | $(LOGS)
 	for m in 1 2 4 8 16 31; do echo "== passmask=$$m"; $(PAR) --thr -o $(LOGS)/t3_awgn_mask$$m.log -- awgn -s -28,-10,1 -n 13 -T passmask=$$m > /dev/null || exit 1; grep "^#\|^F" $(LOGS)/t3_awgn_mask$$m.log; done
 	echo "== late-keyed transmitter (first 23 symbols missing), passes 1+5 vs all"; \
@@ -164,11 +164,12 @@ real-rec: $(BUILD)/js8wav
 
 deccheck: t2 t3 multi false ft8time real
 
-# ---- everything else the result files quote (added after the review of 23 Nov 2026) ------------
+# ---- further decoder measurements ---------------------------------------------------------------
 # APP_ARENA = the radio app's decoder arena on the host: 245760 - the shell's reserve (js8sim prints it)
 APP_ARENA ?= 189824
 APP_RES   ?= $(shell expr 245760 - $(APP_ARENA))
-AIR        = $(SAMPLES)/nickr01__decode_air_test_1min.8k.wav
+# a crowded one-minute off-air recording of the private set, found by the end of its file name
+AIR        = $(firstword $(wildcard $(SAMPLES)/*__decode_air_test_1min.8k.wav))
 DEMO       = $(BUILD)/c2/demo_multi_3periods.wav
 
 real-t0-rec: $(BUILD)/js8wav | $(LOGS)
@@ -220,7 +221,7 @@ coreextra: real-t0 apparena t3seed arena abort snrcal align
 # streaming front end (js8_stream_*): frames AND candidate counts must be the same with and without it, wherever the
 # stream starts in the capture, for late captures (-n < 0.5), short captures and a band that needs two band passes
 stream: $(BUILD)/js8wav $(BUILD)/js8sweep | $(LOGS)
-	@[ -n "$(HAVE_REC)" ] || echo "stream: no recordings (RECORDINGS=<dir>) - only the generated T2 sweep is compared"
+	@[ -n "$(HAVE_REC)" ] || echo "stream: no recordings (RECORDINGS=<dir>) - only the generated clean sweep is compared"
 	@bad=0; n=0; for f in $(HAVE_REC); do for o in "" "-n -1.0" "-c 100000" "-b 200,3000"; do \
 	    ref=`$(BUILD)/js8wav $$f -t 0 -W $(APP_ARENA) -b 450,2550 $$o | grep '^R\|^E' | sed 's/^\(E [0-9]* [0-9]* [0-9]*\) .*/\1/' | cksum`; \
 	    for p in 0 1 640 40000 116800; do n=`expr $$n + 1`; \

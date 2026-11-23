@@ -14,6 +14,7 @@ Writes $BUILD/results-e2e.md and exits 1 if a check failed.  Nothing transmits.
 
   python3 -I -B tests/e2e.py [--skip-real] [--skip-rt] [--skip-arm]
 """
+import glob
 import json
 import os
 import re
@@ -619,7 +620,7 @@ def real_one(key):
 def sweep_one(a):
     """decode_air_test_1min with the capture starting `off` ms into the file: app (both bands) and bench"""
     off, band, reserve = a
-    wav = '%s/8k/nickr01__decode_air_test_1min.8k.wav' % SAMPLES
+    wav = (sorted(glob.glob('%s/8k/*__decode_air_test_1min.8k.wav' % SAMPLES)) or ['%s/8k/decode_air_test_1min.8k.wav' % SAMPLES])[0]
     d = fresh('sweep/%s_%02d' % (band, off))
     if band == 'wide':
         open(d + '/JS8.CFG', 'w').write(WIDE_CFG)
@@ -780,10 +781,10 @@ def run_real():
             if af != bf or sim.rc != 0:
                 sw_bad.append('%s +%d ms: app %d, bench %d' % (band, off, len(af), len(bf)))
         tab.append('%-8s %s' % (band, '  '.join(row)))
-    check('capture alignment, nickr01__decode_air_test_1min (18 Normal frames, crowded): with the capture starting 0, 5, ... 75 ms into the file '
+    check('capture alignment, decode_air_test_1min (18 Normal frames, crowded): with the capture starting 0, 5, ... 75 ms into the file '
           'the app decodes at least 17 frames at EVERY start, in both bands, and exactly the frames of the bench', sw_min >= 17 and not sw_bad,
           'fewest %d; %s' % (sw_min, ' | '.join(sw_bad[:6]) if sw_bad else 'app = bench at all 32 points'))
-    block('Frames decoded on nickr01__decode_air_test_1min, capture start 0 / 5 / ... / 75 ms after file sample 0 (app; "bench" only where it differs):', '\n'.join(tab))
+    block('Frames decoded on decode_air_test_1min, capture start 0 / 5 / ... / 75 ms after file sample 0 (app; "bench" only where it differs):', '\n'.join(tab))
     if vlines:
         block('Frames the reference does not list, checked against the audio (tests/verify_frame.py):', '\n'.join(vlines))
     if missing_must:

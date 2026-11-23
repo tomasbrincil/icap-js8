@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tomas Brincil OK1BT. Written by Claude (Anthropic) under his direction; see AUTHORS.md.
-"""Read the header of an ICAP *.APP file and check it against the IC-705 limits (checkpoint C6).
+"""Read the header of an ICAP *.APP file and check it against the IC-705 limits.
 
   js8apphdr.py JS8.APP [--su DIR] [--md OUT.md]
 

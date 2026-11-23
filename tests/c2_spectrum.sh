@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tomas Brincil OK1BT. Written by Claude (Anthropic) under his direction; see AUTHORS.md.
-# Checkpoint C2: generate JS8 Normal test signals with js8gen and verify the clean ones with
+# c2: generate JS8 Normal test signals with js8gen and verify the clean ones with
 # the independent spectrum tool js8spec (8 tones, 6.25 Hz apart, 12.64 s, Costas, tones equal
 # to the encoder output). Usage: c2_spectrum.sh BUILD_DIR
 set -u
@@ -33,7 +33,7 @@ echo "--- determinism: same seed -> identical file, other seed -> different"
 if cmp -s "$O/n1.wav" "$O/n2.wav" && ! cmp -s "$O/n1.wav" "$O/n3.wav"; then echo "PASS  seeded PRNG reproducible"; else echo "FAIL  seeded PRNG"; rc=1; fi
 rm -f "$O/n2.wav" "$O/n2.wav.txt" "$O/n3.wav" "$O/n3.wav.txt"
 
-echo "--- demo files for the decoder work (T2/T3): noise, overlap, several periods"
+echo "--- demo files for the decoder tests: noise, overlap, several periods"
 "$B/js8gen" -o "$O/demo_snr-10.wav" -S 1 -n 300 -s "1500,0.2,-10,HELLOWORLD++,5" || rc=1
 "$B/js8gen" -o "$O/demo_multi_3periods.wav" -S 2 -n 300 -p 3 \
    -s "1000,0,-5,HELLOWORLD++,5" -s "1006.25,0.1,-8,0123456789AB,0,1" -s "1800,-0.4,-12,t0vYTDe3231m,3" \
