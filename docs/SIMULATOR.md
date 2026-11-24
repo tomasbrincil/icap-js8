@@ -15,7 +15,7 @@ Stated first, so that nobody is misled:
 - **It is a model of the loader written from the SDK's documentation and from a few observations**, not from the loader's source, which we have not seen. Where the real behaviour was not known, the simulator guesses.
 - **It is tied to the JS8 app.** See "Using it for another app" below.
 
-Nothing in it transmits or touches a radio.
+Nothing in it transmits or touches a radio: "transmitted" audio is written into a WAV file (`-w`) and can be decoded again.
 
 ## How it works
 
@@ -26,10 +26,13 @@ The SDK hands an app one thing: a table of function pointers (`struct icap_svc`)
 | Audio in | Samples from a WAV or raw PCM file (8000 Hz, mono, 16 bit) on a virtual clock. Sample 0 sits on a 15 s period edge of the fake clock. Silence before and after the file. A ring of limited size: unread audio beyond it is an overrun, as on the radio. |
 | Clock, sleep | Virtual time. A sleep advances the clock without waiting, so an hour of operation runs in seconds. |
 | Files | A directory on the PC with the loader's rules as the SDK documents them: names of `A-Z 0-9 _ - .` up to 48 characters, at most 4 files open, no append, no seek, opening for writing empties the file. A read-only overlay directory (`-J`) lets many runs share one copy of the dictionary. |
-| Virtual files | Only `@MYCALL` and `@CLOCK` are modelled. The other virtual files of the firmware (`@MYLOC`, `@FREQ`, `@TX`, `@MODECFG`, `@SPOT`, `@QSO` ...) fail here with `ICAP_E_NAME`, which is the answer the SDK documents for firmware without them. The JS8 app opens only `@MYCALL`. |
+| Virtual files | `@MYCALL` and `@CLOCK`; with the transmit model (`-X`) also `@TX`, `@QSO`, `@QTX0` / `@QTX1`, `@QTXC` and `@MYLOC`. Every other virtual file of the firmware (`@FREQ`, `@MODECFG`, `@SPOT` ...) fails with `ICAP_E_NAME`, the answer the SDK documents for firmware without it. |
+| SD card root | `-K DIR` is the card root for `ICAP_O_ROOT` (the dictionary); without it nothing is found there. |
 | DECODE screen, app window, pop-up | Printed to standard output as `D`, `W<n>` / `L<n>` and `U` lines. |
 | Stop request | Polled by the app; the simulator ends the run after the file plus a tail (`-T`). |
-| Transmit and network services | Present in the table because the SDK's table has them, but they only **count** calls. The summary line must show `tx_calls=0 net_calls=0`, and the test suite checks that. |
+| Transmit services | Without `-X` they only **count** calls; the receive-only app must show `tx_calls=0`. With `-X` (the transmit model, for `FT8.APP`'s flavour of the shell) the slot clock, `icap_tx_begin` / `write` / `end` with the loader's refusals, the tap credit, beacon and CQ arming, owner aborts and stop are modelled from what the SDK documents and from measurements on the radio; where the real loader is not known the model is a guess, and the option list at the top of `tests/js8sim.c` says so. The operator is a script (`-O "T cmd;..."`): `taprow N`, `kbd TEXT` (ENT with TEXT once the keyboard is open), `kbdexit`, `arm` / `disarm`, `cq 0|1`, `abort`, `stop` ... |
+| The radio's keyboard | A model of the keyboard the app opens (it prints `kbd open "<text>"`); it counts opens while a finger is on the screen and keyboards left open at the end, which must both be 0. |
+| Network services | Only counted: the released apps must show `net_calls=0`. |
 
 ### Time and the slow-processor models
 

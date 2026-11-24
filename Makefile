@@ -37,6 +37,8 @@
 # t3, multi, snrcal, t3seed and the noise sweeps of apparena PRINT statistics and fail only when a job crashes;
 # ft8time, arena, abort, prof and kbench print through a pipe and never fail; t2, stream, the clean sweeps of
 # apparena and false (zero false decodes) are pass / fail.  See docs/BUILDING.md.
+# Radio app and transmit path: the two sections at the end of this file (make sim e2e arm, make txsim t7 txe2e fixe2e
+# arm-tx); the entry points for a fresh clone (make fetch, test, arm-all, dist): public.mk.
 
 BUILD   ?= $(CURDIR)/build
 override BUILD := $(abspath $(BUILD))
@@ -291,10 +293,11 @@ clean:
 #   make e2e        scenarios + all real recordings through the simulator -> $(BUILD)/results-e2e.md (~4 min)
 #   make arm        JS8.APP for the IC-705 -> $(BUILD)/arm/JS8.APP (needs the ARM toolchain, see shell/build.sh)
 SDKROOT ?= $(SDKAPPS)/..
-SIM_SRC  = src/js8dec.c src/js8msg.c src/js8jsc.c src/js8asm.c src/js8_constants.c src/js8crc.c src/js8enc.c shell/digi_util.c
+SIM_SRC  = src/js8dec.c src/js8msg.c src/js8jsc.c src/js8asm.c src/js8feat.c src/js8_constants.c src/js8crc.c src/js8enc.c shell/digi_util.c
+SHELL_H  = shell/js8app_store.h shell/js8app_tx.h shell/js8app_kbd.h src/js8feat.h src/js8jsc.h src/js8asm.h src/js8msg.h src/js8tx.h
 .PHONY: sim e2e arm
 sim: $(BUILD)/js8sim $(BUILD)/js8mk
-$(BUILD)/js8sim: tests/js8sim.c shell/js8app.c $(SIM_SRC) | $(BUILD)/obj
+$(BUILD)/js8sim: tests/js8sim.c shell/js8app.c $(SIM_SRC) $(SHELL_H) | $(BUILD)/obj
 	$(CC) -std=gnu99 -O2 -Wall -Wextra -Wshadow -fno-math-errno -DDIGI_HOST -I$(SDKROOT) -Ishell -Isrc tests/js8sim.c $(SIM_SRC) -lm -o $@
 $(BUILD)/js8mk: tests/js8mk.c src/js8pack.c src/js8msg.c src/js8jsc.c | $(BUILD)/obj
 	$(CC) -std=c99 -D_POSIX_C_SOURCE=200809L -O2 -Wall -Wextra tests/js8mk.c src/js8pack.c src/js8msg.c src/js8jsc.c -o $@
@@ -302,6 +305,55 @@ e2e: deps dict $(BUILD)/js8gen
 	$(if $(strip $(RECORDINGS)),SAMPLES="$(abspath $(RECORDINGS))") nice $(PYTHON) -I -B tests/e2e.py $(SKIP_ARM)
 arm:
 	OUT=$(BUILD)/arm sh shell/build.sh
+
+# ---- transmit path.  NOTHING HERE TRANSMITS: the TX-capable shell runs only in the simulator. ----
+#   make txsim      js8simtx = the shell built with -DJS8_TX (src/js8tx.c, src/js8pack.c, SDK txsynth.c) inside the simulator
+#   make t7         engine unit tests against a mock loader (plain and ASan/UBSan), the log-record length test t10 (ASan),
+#                   79 tones of 1000 random frames vs tests/model.py
+#   make txe2e      loopback / timing / safety / strategies / 2 h soak in the simulator -> $(BUILD)/tx/checks.md (~10 min)
+#   make arm-tx     the RX+TX flavour for the IC-705 -> $(BUILD)/arm/FT8.APP (see shell/build.sh for the name)
+TXS      = $(DIGI)/txsynth.c
+.PHONY: txsim t7 txe2e arm-tx
+txsim: $(BUILD)/js8simtx $(BUILD)/txchk
+$(BUILD)/js8simtx: tests/js8sim.c shell/js8app.c src/js8tx.c src/js8tx.h src/js8pack.c $(SIM_SRC) $(SHELL_H) | $(BUILD)/obj
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Wshadow -fno-math-errno -ffp-contract=off -DDIGI_HOST -DJS8_TX -DJS8_KBD -I$(SDKROOT) -I$(DIGI) -Ishell -Isrc tests/js8sim.c $(SIM_SRC) src/js8tx.c src/js8pack.c $(TXS) -lm -o $@
+$(BUILD)/txchk: tests/txchk.c | $(BUILD)/obj
+	$(CC) -std=gnu99 -O2 -Wall -Wextra $< -lm -o $@
+# -DJS8_QTX: the tap-grant path (txpath=1), which the radio builds do not contain (src/js8tx.h rule 1); t7 tests it too.
+# t7_tx_link: the engine with the entry points of the experimental terminal link compiled in (src/js8tx.c only; the link
+# itself is not part of this release)
+T7SRC = tests/t7_tx.c src/js8tx.c src/js8pack.c src/js8msg.c src/js8jsc.c $(CORE_C) $(TXS)
+$(BUILD)/t7_tx: tests/t7_tx.c src/js8tx.c src/js8tx.h src/js8pack.c src/js8msg.c src/js8jsc.c $(CORE_C) | $(BUILD)/obj
+	$(CC) -std=gnu99 -D_GNU_SOURCE -DJS8_QTX -O2 -Wall -Wextra -ffp-contract=off -Isrc -I$(DIGI) $(T7SRC) -lm -o $@
+$(BUILD)/san/t7_tx_asan: tests/t7_tx.c src/js8tx.c src/js8tx.h src/js8pack.c src/js8msg.c src/js8jsc.c $(CORE_C) | $(BUILD)/obj
+	mkdir -p $(BUILD)/san
+	$(CC) -std=gnu99 -D_GNU_SOURCE -DJS8_QTX $(SAN) -Wall -Wextra -ffp-contract=off -Isrc -I$(DIGI) $(T7SRC) -lm -o $@
+$(BUILD)/san/t10_txlog_asan: tests/t10_txlog.c src/js8tx.c src/js8tx.h src/js8pack.c src/js8msg.c src/js8jsc.c $(CORE_C) | $(BUILD)/obj
+	mkdir -p $(BUILD)/san
+	$(CC) -std=gnu99 $(SAN) -Wall -Wextra -ffp-contract=off -Isrc -I$(DIGI) tests/t10_txlog.c src/js8tx.c src/js8pack.c src/js8msg.c src/js8jsc.c $(CORE_C) $(TXS) -lm -o $@
+SAN = -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
+$(BUILD)/tx/tx_model_vectors.txt: tests/model.py
+	mkdir -p $(BUILD)/tx
+	$(PYTHON) tests/model.py --src $(SRCREF) gen 1000 20261124 > $@.tmp && mv $@.tmp $@
+# the same unit tests with the terminal's entry points compiled in (-DJS8_LINK: js8tx_item / select / confirm)
+$(BUILD)/t7_tx_link: tests/t7_tx.c src/js8tx.c src/js8tx.h src/js8pack.c src/js8msg.c src/js8jsc.c $(CORE_C) | $(BUILD)/obj
+	$(CC) -std=gnu99 -D_GNU_SOURCE -DJS8_QTX -DJS8_LINK -O2 -Wall -Wextra -ffp-contract=off -Isrc -I$(DIGI) $(T7SRC) -lm -o $@
+t7: $(BUILD)/t7_tx $(BUILD)/t7_tx_link $(BUILD)/san/t7_tx_asan $(BUILD)/san/t10_txlog_asan $(BUILD)/tx/tx_model_vectors.txt
+	$(BUILD)/t7_tx unit
+	$(BUILD)/t7_tx_link unit
+	$(BUILD)/san/t7_tx_asan unit
+	$(BUILD)/san/t10_txlog_asan
+	$(BUILD)/t7_tx vectors $(BUILD)/tx/tx_model_vectors.txt
+txe2e: deps dict $(BUILD)/js8gen
+	@[ -f $(BUILD)/e2e/mix.wav ] || $(MAKE) e2e
+	$(if $(strip $(RECORDINGS)),SAMPLES="$(abspath $(RECORDINGS))") nice -n 19 $(PYTHON) -I -B tests/tx_e2e.py $(SKIP_ARM)
+# the keyboard control, the review regressions at shell level, green frame, HB beacon (tests/fix_e2e.py) -> $(BUILD)/rfix/checks.md
+fixe2e: deps dict
+	@[ -f $(BUILD)/e2e/mix.wav ] || $(MAKE) e2e
+	nice -n 19 $(PYTHON) -I -B tests/fix_e2e.py
+arm-tx:
+	FLAVOUR=tx OUT=$(BUILD)/arm sh shell/build.sh
+
 
 # ---- portable entry points for a fresh clone: fetch, test, test-full, test-recordings, dist
 include public.mk

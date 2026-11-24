@@ -76,6 +76,21 @@ static int adjacency(const char *s, int n)
     return 0;
 }
 
+/* a compound call is one only if the 50-bit packing holds ALL of it: pack + unpack must give the same string back.
+ * (JS8Call's compound pattern demands the 3 + '/' + 3 + '/' + 3 slot structure; a longer part - "DL/Q7AB/P",
+ * "ABCDE/FGHI" - would be packed without its tail and the message would go out to a DIFFERENT call.  Such a word is
+ * not a callsign, and the line is free text, as in JS8Call.) */
+static int fits50(const char *call)
+{
+    uint16_t l[4];
+    char o[JS8_CALL_MAX];
+    int i;
+    if (!js8_call50_pack(call, l)) return 0;
+    js8_call50_unpack(l, o);
+    for (i = 0; call[i] && call[i] == o[i]; i++) ;
+    return call[i] == o[i];
+}
+
 int js8_call_kind(const char *call)
 {
     int n = s_len(call), b = n, i, slashes = 0, first_slash = -1;
@@ -96,10 +111,10 @@ int js8_call_kind(const char *call)
         char t[JS8_CALL_MAX];
         for (i = 0; i < first_slash && i < JS8_CALL_MAX - 1; i++) t[i] = call[i];
         t[i] = 0;
-        return js8_group_find(t) ? 0 : 2;
+        return js8_group_find(t) || !fits50(call) ? 0 : 2;
     }
-    if (call[0] == '@') return 2;
-    return (n > 2 && adjacency(call, n)) ? 2 : 0;
+    if (call[0] == '@') return fits50(call) ? 2 : 0;
+    return (n > 2 && adjacency(call, n) && fits50(call)) ? 2 : 0;
 }
 
 int js8_call28_pack(const char *call, uint32_t *v, int *portable)
@@ -339,7 +354,7 @@ static int parse_hb(const char *s, int *cq, int *b3, char *grid)
 
     while (is_sp(s[p])) p++;
     n = starts(s + p, "@ALLCALL");
-    if (n < 0) n = starts(s + p, "@HB");
+    if (n <= 0) n = starts(s + p, "@HB");                    /* (starts() gives 0, not a negative value, on a mismatch) */
     if (n > 0) {
         if (!is_sp(s[p + n])) return 0;
         p += n;
@@ -430,16 +445,24 @@ static int contains(const char *s, const char *sub)
 int js8_build_message(const js8_build_t *cfg, const char *text,
                       uint8_t frames[][JS8_FRAME_BYTES], int max_frames)
 {
+    return js8_build_message_ex(cfg, text, frames, max_frames, 0);
+}
+
+int js8_build_message_ex(const js8_build_t *cfg, const char *text,
+                         uint8_t frames[][JS8_FRAME_BYTES], int max_frames, int *skipped)
+{
     char line[JS8_LINE_MAX + 24];
     const char *mycall = cfg->mycall ? cfg->mycall : "";
     int len = 0, pos = 0, nf = 0, has_dir = 0, has_data = 0, i;
     int my_kind = js8_call_kind(mycall), mylen = s_len(mycall);
 
+    if (skipped) *skipped = 0;
     for (i = 0; text[i] && len < JS8_LINE_MAX; i++) {
         char c = text[i];
         if (c >= 'a' && c <= 'z') c = (char)(c - 32);
         line[len++] = c;
     }
+    if (skipped && text[i]) *skipped = 1;                    /* longer than JS8_LINE_MAX: the rest would be cut */
     line[len] = 0;
     /* drop our own call from the start of the line */
     if (mylen && starts(line, mycall) > 0 && (line[mylen] == ':' || line[mylen] == ' ')) {
@@ -525,6 +548,7 @@ int js8_build_message(const js8_build_t *cfg, const char *text,
             nf++; has_data = 1; pos += m;
             continue;
         }
+        if (skipped && !is_sp(line[pos])) ++*skipped;        /* a character that goes into no frame */
         pos++;                                               /* not encodable: skip */
     }
     if (nf > 0) {

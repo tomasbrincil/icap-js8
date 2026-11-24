@@ -7,7 +7,13 @@
  * sequentially up to the wanted entry.  Freestanding C99, no libc.
  *
  *   decode:  index -> word      JSCHEAD.BIN (in RAM, optional) / JSCDxxx.BIN
- *   encode:  text  -> index     JSCExxx.BIN + JSCES.BIN (longest prefix; host test tools only)
+ *   encode:  text  -> index     JSCExxx.BIN + JSCES.BIN (longest prefix, TX only)
+ *   checksums:                  JSCSUM.BIN, one CRC-16 per file.  When it is on the card every
+ *            dictionary file is checked ONCE per run, on its first use: the lookup reads on to
+ *            the end of the file and compares the CRC of the whole file.  A corrupt file is
+ *            remembered and every word in it fails from then on (the caller shows the frame
+ *            raw); a corrupt JSCSUM.BIN or JSCHEAD.BIN fails js8jsc_init.  Without JSCSUM.BIN
+ *            (a card made by an older mkjsc.py) nothing is checked and `sums` stays 0.
  *
  * The dictionary itself is derived from JS8Call (C) 2018 Jordan Sherer KN4CRD,
  * GPL-3.0-or-later.
@@ -20,6 +26,7 @@
 #define JS8JSC_WORD_MAX  26        /* longest dictionary word */
 #define JS8JSC_CACHE_N   16        /* small LRU of recently decoded words */
 #define JS8JSC_CACHE_W   11        /* longest word kept in the LRU */
+#define JS8JSC_FILES_MAX 520       /* files JSCSUM.BIN covers: head + 256 decode buckets + JSCES + 256 encode buckets */
 
 /* File access supplied by the application (radio: icap_open/read/close,
  * PC: stdio).  open returns fd >= 0 or < 0; read returns bytes read (0 = EOF). */
@@ -43,14 +50,22 @@ typedef struct {
     struct { uint32_t idx; uint8_t len; uint8_t age; char w[JS8JSC_CACHE_W]; } cache[JS8JSC_CACHE_N];
     /* statistics (bytes read from files, files opened, last lookup cost) */
     uint32_t st_bytes, st_opens, st_last_bytes, st_max_bytes, st_cache_hits, st_head_hits;
+    uint16_t st_bad, st_checked; /* files found corrupt / files checked and good */
+    uint8_t  sums;               /* 1 = JSCSUM.BIN is valid: files are checked on first use */
+    uint8_t  fst[(JS8JSC_FILES_MAX + 3) / 4];   /* 2 bits per file: 0 not checked, 1 good, 2 corrupt */
 } js8jsc_t;
 
+/* CRC-16/CCITT-FALSE step (poly 0x1021); start with 0xFFFF.  Also used by the app for its own files. */
+uint16_t js8_crc16(uint16_t crc, const void *p, uint32_t n);
+
 /* Read JSCHEAD.BIN; load as many head entries as fit into mem (mem may be
- * NULL / 0: every lookup then goes to the bucket files).  Returns 0 or < 0. */
+ * NULL / 0: every lookup then goes to the bucket files).  Returns 0 or < 0
+ * (-5: JSCSUM.BIN is on the card and it, or JSCHEAD.BIN, is corrupt). */
 int js8jsc_init(js8jsc_t *c, const js8_io_t *io, uint8_t *mem, uint32_t mem_size);
 
 /* index -> word (NOT NUL terminated).  Returns the length, or < 0 on error
- * (dictionary not available, file missing, index out of range). */
+ * (dictionary not available, file missing, index out of range; -4: the file
+ * of this word failed its checksum). */
 int js8jsc_word(js8jsc_t *c, uint32_t index, char *out, int max);
 
 /* Longest dictionary prefix of w[0..wlen) exactly as JSC::lookup finds it.

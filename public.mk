@@ -4,12 +4,13 @@
 # public.mk - entry points for a fresh clone (included at the end of the Makefile).
 #
 #   make fetch            get the ICAP SDK and the JS8Call reference files into third_party/ (network; once)
-#   make test             the host test suite on generated signals only (see "test:" below)
+#   make test             the host test suite on generated signals only, receive and transmit (see "test:" below)
 #   make test-full        test + decoder statistics, kernel bench, profile and the sanitizer / fuzz suite
 #                         (the statistics are printed, not judged; only "false" requires zero false decodes)
 #   make test-recordings RECORDINGS=<dir>
 #                         your own off-air recordings through the decoder bench (no recordings are shipped)
-#   make arm              the receiver app for the radio -> $(BUILD)/arm/JS8.APP (needs arm-none-eabi-gcc)
+#   make arm-all          the two radio apps (needs arm-none-eabi-gcc): $(BUILD)/arm/FT8.APP (receive + transmit)
+#                         and $(BUILD)/arm/JS8.APP (receive only); "make arm-tx" / "make arm" build one of them
 #   make dist             the file set for the SD card -> $(BUILD)/dist/ and $(BUILD)/icap-js8-sdcard.zip
 #                         (builds the app: needs arm-none-eabi-gcc as well)
 #   make clean            objects and the first test binaries only; to start over: rm -rf build
@@ -23,7 +24,8 @@
 #   RECORDINGS directory with 8k/*.8k.wav (8000 Hz, mono, 16 bit) and optionally expected.json
 #   CC, PYTHON host compiler (default cc; the fuzz suite needs -fsanitize=address,undefined) and
 #              Python (default python3; 3.8+, standard library only); passed on to the test scripts
-# NOTHING HERE TRANSMITS OR TOUCHES A RADIO: every "radio" is the simulator tests/js8sim.c.
+# NOTHING HERE TRANSMITS OR TOUCHES A RADIO: every "radio" is the simulator tests/js8sim.c; "transmitted" audio
+# goes into WAV files under $(BUILD).
 # Targets that need recordings (real, real-t0, align, part (b) of e2e) print SKIP and succeed without them.
 
 ifdef ARM_GCC
@@ -40,10 +42,10 @@ SKIP_ARM  = $(if $(HAVE_ARM),,--skip-arm)
 
 # the suites rebuild the same host binaries in $(BUILD): never run two targets of this Makefile in parallel
 .NOTPARALLEL:
-.PHONY: help fetch deps dict test test-full test-recordings dist real-rec real-t0-rec align-rec
+.PHONY: help fetch deps dict test test-full test-recordings dist arm-all real-rec real-t0-rec align-rec
 
 help:
-	@sed -n '4,28p' public.mk
+	@sed -n '4,29p' public.mk
 
 fetch:
 	sh tools/fetch_refs.sh all
@@ -58,7 +60,8 @@ deps:
   echo "  (the check needs sha256sum or shasum; run 'sh tools/fetch_refs.sh verify' to see what it reports)"; exit 1; }
 	@[ -n "$(HAVE_ARM)" ] || echo "note: $(CROSS)gcc not found - host tests only, the ARM build checks are skipped"
 
-# the dictionary files (generated from JS8Call's jsc_list.cpp; the radio needs JSCHEAD.BIN + JSCD*.BIN only)
+# the dictionary files (generated from JS8Call's jsc_list.cpp; receive needs JSCHEAD.BIN + JSCD*.BIN, transmitting
+# free text needs JSCES.BIN + JSCE*.BIN as well, and JSCSUM.BIN checks them all)
 dict: $(BUILD)/sd/JSCHEAD.BIN
 $(BUILD)/sd/JSCHEAD.BIN: tools/mkjsc.py
 	$(PYTHON) -I -B tools/mkjsc.py --out $(BUILD)/sd
@@ -90,6 +93,12 @@ endif
 #              with RECORDINGS also every recording)
 #   e2e        the receiver app in the loader simulator on generated scenarios, + the ARM build and
 #              its checks if a cross compiler is there, + the recordings if RECORDINGS has expected.json
+#   t7         transmit engine against a mock loader (plain and ASan/UBSan): selection and timing, tap credit,
+#              CQ by the green frame, HB beacon, the safety rules; 79 tones of 1000 random frames vs tests/model.py
+#   txe2e      the RX+TX app in the simulator: loopback through the decoder, slot timing, safety (zero samples
+#              when nothing may go out), strategies, an accelerated 2 h soak; both ARM builds if a cross compiler is there
+#   fixe2e     the keyboard control at app level: prefill, finger release, tap credit, red frame, EXIT, cancel,
+#              green frame, HB beacon, the dictionary on the card root
 test: deps
 	$(MAKE) check
 	$(MAKE) dict
@@ -99,6 +108,9 @@ test: deps
 	$(MAKE) t2
 	$(MAKE) stream
 	$(MAKE) e2e
+	$(MAKE) t7
+	$(MAKE) txe2e
+	$(MAKE) fixe2e
 	@echo "make test: all passed$(if $(HAVE_ARM),, (host only: no ARM toolchain))$(if $(HAVE_REC),, (generated signals only: no recordings))"
 
 test-full: test
@@ -120,6 +132,8 @@ test-recordings: deps
 	@if [ -f "$(RECORDINGS)/expected.json" ]; then $(MAKE) e2e; \
 	 else echo "no $(RECORDINGS)/expected.json: decoder bench only (results in $(BUILD)/real), end-to-end comparison skipped"; fi
 
-# the SD-card file set: receiver app (RX only), receive dictionary, configuration presets
+arm-all: arm arm-tx
+
+# the SD-card file set: both apps, the whole dictionary (for the card ROOT), sample JS8.CFG, presets
 dist: deps dict
 	sh tools/mkdist.sh

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 Tomas Brincil OK1BT. Written by Claude (Anthropic) under his direction; see AUTHORS.md.
  *
- * js8pack - text -> JS8 frames (the reverse of js8msg).  NOT part of the radio app: it is
- * compiled only into the host test tools (tests/js8mk.c, tests/t6_msg.c) to make test frames.
+ * js8pack - text -> JS8 frames (the reverse of js8msg): the transmit path of FT8.APP and the
+ * host test tools (tests/js8mk.c, tests/t6_msg.c) make frames with it.
  * Re-implementation of JS8Call varicode.cpp pack* / buildMessageFrames and
  * jsc.cpp compress ((C) 2018 Jordan Sherer KN4CRD, GPL-3.0-or-later).  Submode Normal
  * only (data frames carry the in-payload header, i3bit data flag clear).
@@ -51,5 +51,10 @@ typedef struct {
  * or -1 if max_frames is too small. */
 int js8_build_message(const js8_build_t *cfg, const char *text,
                       uint8_t frames[][JS8_FRAME_BYTES], int max_frames);
+/* The same; *skipped (may be NULL) = number of non-blank characters of the text that went into NO
+ * frame (not encodable without the dictionary, or beyond JS8_LINE_MAX).  The transmit path refuses a
+ * message with *skipped != 0: what goes on the air must be exactly what the operator confirmed. */
+int js8_build_message_ex(const js8_build_t *cfg, const char *text,
+                         uint8_t frames[][JS8_FRAME_BYTES], int max_frames, int *skipped);
 
 #endif

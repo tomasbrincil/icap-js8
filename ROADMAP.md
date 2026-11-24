@@ -2,36 +2,36 @@
 
 No dates and no promises. This is a hobby project of one person. The order below is rough.
 
-## Transmit - in review, not published yet
+## Done in 0.2.0
 
-Heartbeat, CQ and directed messages. A transmit engine exists and runs in the PC simulator. It is under a safety review and is **not part of this repository**; this release cannot transmit at all.
+- Transmit: heartbeat, CQ, directed messages and free text, written on the radio's own keyboard (see the README). The rule stays: nothing goes on the air without the operator's own action on the radio - ENT on a text seen whole, the tap credit of the loader or the operator's arming.
+- The dictionary in the card root instead of the Apps folder.
 
-The rule it is being built to, and that will not change: the app transmits only when **the owner has armed the beacon on the radio AND a human has requested exactly that message**. Publication is planned for after the review is closed; no date.
+## Next for transmit
 
-## Text entry with the radio's own keyboard
+- Try on the radio what so far ran only in the simulator: CQ by the green frame, the HB beacon of `txhb=` over a longer time, the cancel and stop paths under real conditions.
+- The keyboard on more firmware versions. The direct calls are tied to 705J 1.40 / SQ6EMM 20261119v14 J. A text-entry service of the loader would be the clean way; see our request in [sq6emm/icap-sdk#4](https://github.com/sq6emm/icap-sdk/issues/4).
+- A short ramp at the end of an aborted frame (no key click).
+- Heartbeats in JS8Call's 500-1000 Hz heartbeat sub-band.
 
-The IC-705 has an on-screen keyboard (for example in the RTTY memory editor). Apps cannot use it today. See our request in [sq6emm/icap-sdk#4](https://github.com/sq6emm/icap-sdk/issues/4) (text entry is the first wish there). Free text from the radio itself depends on it.
+## Experimental, in the code but not released
 
-## Terminal link
+These exist in the development tree and partly in this source, run in the simulator, and are **not documented or supported** in this release:
 
-A way to read decoded messages, and later to type messages, on a small external device or a computer over the radio's network connection. Exists as an experiment in the simulator; not published.
+- **Terminal link**: a small external keyboard and display (an M5 Cardputer) over the radio's network connection, which can show what the radio shows and hand a text to the radio, to be sent only by ENT on the radio's keyboard. Not in this repository; the released apps are built without it.
+- **Views BAND / INBOX / HEARD** of the app window (chosen from the terminal), **ADIF log records**, **text presets** (`tx1=`..`tx4=`) and **keyer memories** read from a file written by another app (`MEM.APP`). The code is in `src/js8feat.c` and `shell/js8app_kbd.h`; whether and how they become operable from the radio alone is open.
 
 ## Generic ICAP host simulator - if there is interest
 
-The simulator in `tests/js8sim.c` is tied to the JS8 app. The plan is to split its generic core (the fake ICAP service table, the virtual clock, the SD-card directory with the loader's file rules, audio from a file) out of the JS8 test harness into a stand-alone directory with a hello-world example, so that any ICAP app can be run on a PC. Related: [sq6emm/icap-sdk#1](https://github.com/sq6emm/icap-sdk/issues/1), opened by ok1cdj. If you would use it, say so in an issue; that decides whether it gets done. For now the simulator ships as it is, see [`docs/SIMULATOR.md`](docs/SIMULATOR.md).
+The simulator in `tests/js8sim.c` is tied to the JS8 app. The plan is to split its generic core (the fake ICAP service table, the virtual clock, the SD-card directory with the loader's file rules, audio from a file, the transmit and tap models) into a stand-alone directory with a hello-world example, so that any ICAP app can be run on a PC. Related: [sq6emm/icap-sdk#1](https://github.com/sq6emm/icap-sdk/issues/1), opened by ok1cdj. If you would use it, say so in an issue.
 
 ## Head-to-head comparison with JS8Call
 
 Run JS8Call and this receiver on the same audio and compare what each decodes. Not done yet. Until then nobody should assume this receiver hears what JS8Call hears.
-
-## Moving the dictionary out of the Apps folder
-
-The 257 dictionary files sit next to the apps today, and many files in that folder slow down the radio's app rescan. They should live somewhere else on the card, or in fewer files, as far as the loader's file service allows.
 
 ## Smaller items
 
 - Submodes other than Normal.
 - A CI job that runs `make fetch && make test` on a clean machine.
 - Measurements on other IC-705 versions, if owners report them. (The IC-9700 is not supported by this build; it is packed for the IC-705 only.)
-- A check of the built binary, not only of the sources, that no transmit or network service is called.
-- Notes on the app window for an incomplete dictionary and for `JS8.CFG` entries that were ignored.
+- PSKReporter spots through the firmware's `@SPOT`.

@@ -20,14 +20,17 @@ The code, the tests, the host simulator and the documentation in this repository
 were written by Claude, Anthropic's AI model, working as a coding agent under
 Tomas Brincil's direction in November 2026. That includes the
 research of the JS8 protocol from the published JS8Call sources, the port of the
-SDK's FT8 decoder to JS8, the message layer, and the reviews of its own work.
+SDK's FT8 decoder to JS8, the message layer, the transmit engine and its safety
+rules, the use of the radio's own keyboard (on the entry points found by BI1BIF),
+and the reviews of its own work.
 
 This is stated so that nobody mistakes the code for hand-written, peer-reviewed
 radio software:
 
 - No human has reviewed the code line by line.
 - What was verified on a real radio is only what the README lists as tested on the
-  radio (receive). Everything else was tested in a PC simulator or not at all, and
+  radio (receive; and for 0.2.0 the keyboard, one-frame and two-frame transmissions).
+  Everything else was tested in a PC simulator or not at all, and
   the README says which.
 - An AI model can be confidently wrong. Where the behaviour of the radio's loader
   was not known, the code and the simulator contain assumptions; the known ones

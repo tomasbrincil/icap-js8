@@ -13,8 +13,38 @@
  * The two-slot scheduling (a finished capture is decoded while the next period is captured into
  * the other slot) follows apps/wspr/wsprapp.c of the same SDK (same author, GPL-3.0-or-later).
  *
- * RX ONLY: this app contains no transmit, beacon or network code - it never calls the loader's
- * transmit or network services.
+ * Two build flavours of this one source:
+ *   (default)   RX ONLY: no transmit, beacon or network code is compiled in - the app never calls
+ *               icap_tx_* or icap_net_* (JS8.APP).
+ *   -DJS8_TX    RX + TX: adds the transmit path js8tx.c (outbox, safety rules, the loader's grants; see js8tx.h), its
+ *               loader binding shell/js8app_tx.h (the only place that calls icap_tx_*) and the control
+ *               shell/js8app_kbd.h (a tap on a row opens the radio's own keyboard, ENT sends; -DJS8_KBD: the real
+ *               keyboard of 705J 1.40 / v14 J).  Deployed under the file name FT8.APP, because the loader gives 15 s
+ *               slots and beacon arming only to a file of that name.  A frame is keyed only for a text the owner saw
+ *               whole on the keyboard and confirmed with ENT, on the loader's tap credit (one frame) or the owner's
+ *               arming; with an empty queue it never calls icap_tx_begin.  Still no network code.
+ *   -DJS8_LINK  (with or without JS8_TX) adds the terminal link: one outbound TCP connection to the Cardputer
+ *               (js8link.h, shell/js8app_link.h - the only place that calls icap_net_*; PROTOCOL.md).  The
+ *               terminal shows what the radio shows and can HAND a text to the radio: its GO (with the nonce of the
+ *               connection) keeps it until the owner's next tap opens the radio's keyboard WITH it, and only his ENT
+ *               there sends it (safety review 23 Nov 2026).
+ *               Extra JS8.CFG keys: term=<host[:port]> (NO default: without it the link is off and the app makes
+ *               no network call; the Cardputer's soft-AP address is 192.168.4.1), term2=<host[:port]> (a second
+ *               address, e.g. at home), txterm=0|1 (default 0: the terminal can look but not request a
+ *               transmission - with txterm=1 and the beacon armed, WHATEVER ACCEPTS THE CONNECTION at the term=
+ *               address can hand a text of its choice to the radio - never on the air by itself).
+ *               While a slot is transmitted the receiver does not capture or decode that period; the
+ *               capture of the period before is closed 1 s early and decoded after the transmission.
+ *               Extra JS8.CFG keys: tx=0|1 (TX is OFF unless tx=1), txtest=0|1 (both also on/off/yes/no; a value that
+ *               is not understood switches TX OFF resp. TXTEST ON), txstrat=A|B, txf=<Hz, 0 auto>, txmaxf=, txsess=,
+ *               txttl=, txjsc=0|1, txhb=<minutes 10..240, 0 off: HB beacon while the beacon is armed>, txtap=0|1
+ *               (default 1: a one-frame message on the loader's tap credit), kbdirq=0|1 (default 0; 1: open the keyboard
+ *               with IRQs disabled - untested on the radio), popup= defaults to 0 in this flavour (a tap that dismisses
+ *               the modal popup might reach the app as a row tap), tx1= .. tx4=<preset text, the rest of the line; "P1".."P4" on the keyboard>.  A
+ *               bad or out-of-range value of another tx* key keeps the default and gives a note; an unknown tx* key
+ *               (txpath= included, gone since 24 Nov 2026) is refused with a note.  The CW keyer memories of the radio
+ *               come from JS8MEM.TXT (written by MEM.APP; "m1=<text>" .. "m8=<text>"): "M1".."M8" on the keyboard.
+ *               The frame log gets one more record: "T <yyyymmddThhmmss> <f0> <k/n> <samples> <rc> <hex22> <text>".
  *
  * Everything runs in the radio:
  *   js8dec  audio -> 87-bit frames (LDPC + CRC-12 verified)
@@ -23,24 +53,40 @@
  *           shown raw as "#<12 chars>")
  *   js8asm  frames -> complete messages (per audio frequency)
  *
- * DECODE screen (icap_decode_out, every line <= 40 characters: longer rows wrap on the radio when the mini-scope
- * is shown; the word HEARTBEAT is shown as HB here, the logs keep the full text and the seconds):
+ * DECODE screen (icap_decode_out, EVERY row <= 40 characters - decodes, status rows of the transmitter, views: longer
+ * rows wrap on the radio when the mini-scope is shown; in decoded text the word HEARTBEAT is shown as HB here, the logs
+ * keep the full text and the seconds):
  *   "HHMM sNN FFFF TEXT"          one decoded frame (period start, SNR dB / 2500 Hz, tone-0 Hz)
  *   "HHMM sNN FFFF = TEXT"        a complete reassembled message of more than one frame
  *   "HHMM sNN FFFF > TEXT"        a complete message addressed to MYCALL; a one-frame message to
- *                                 MYCALL is shown only in this form.  It is also raised as a popup,
- *                                 but at most ONE popup per 15 s period and none for a message with a
- *                                 wrong checksum (any station can address us; the popup is modal)
+ *                                 MYCALL is shown only in this form.  It is also raised as a popup -
+ *                                 at most ONE per 15 s period, at most 4 in a row and then one per 20
+ *                                 periods, and none for a message with a wrong checksum or an incomplete
+ *                                 one (any station can address us; the popup is modal)
  *   "     TEXT"                   continuation of a text that did not fit the line
- * MYCALL = the radio's "@MYCALL", fallback "call=" in JS8.CFG.
+ *   "TX? <answer>"                (TX flavour) the answer to a query to MYCALL (SNR? GRID? INFO? STATUS? HEARING?),
+ *                                 PREPARED only: a tap on it or on the query opens the radio's keyboard with it,
+ *                                 and only ENT sends it (shell/js8app_kbd.h)
+ *   "TX ..." rows                 (TX flavour) what the transmitter does: "TX queued: arm beacon to send 3 frames",
+ *                                 "TX: on air at the next slot (tap)", "TX refused: ...", "HHMM TX <f0> k/n <text>"
+ *   A tap on any row opens the radio's keyboard (TX flavour; shell/js8app_kbd.h).
+ * MYCALL = call= of JS8.CFG, else the radio's "@MYCALL".  Locator = the radio's "@MYLOC", else loc=.
  *
- * Files in the app folder:
+ * Files in the app folder (storage layer: shell/js8app_store.h):
  *   JS8CAPA.PCM / JS8CAPB.PCM  the two capture files (8 kHz s16)
- *   JS8.CFG      optional: flo= fhi= (tone-0 search range, Hz; default 450..2550 - a wider range
+ *   JS8.CFG      optional.  Key names in any case, blanks around '=' allowed, a UTF-8 BOM is skipped, a line starting
+ *                with '#' or ';' is a comment (and the rest of a line from " #" / " ;", except in the text keys info=
+ *                status= tx1=..tx4=, whose value is the rest of the line); a file longer than the app reads (CFG_SZ)
+ *                gives a note and switches TXTEST on.  Keys: flo= fhi= (tone-0 search range, Hz; default 450..2550 - a wider range
  *                works too, the decoder then goes over the band in two passes and takes longer; a range
- *                narrower than 100 Hz is refused), call=, groups=@ALLCALL,@OK (group calls shown as
- *                "to my group" in JS8MSG.TXT), popup=0, keep=N (archive files kept per log, 2..999,
- *                default 200).
+ *                narrower than 100 Hz is refused), call= (overrides @MYCALL), loc= (used when the radio has
+ *                no position), groups=@ALLCALL,@OK (group calls shown as "to my group"), popup=0,
+ *                keep=N (segment files per log stream, 2..9999, default 600), flush=N (periods a log line
+ *                may wait in RAM, 1..40, default 4), info=<text> / status=<text> (answers to INFO? / STATUS?,
+ *                up to 40 characters, the rest of the line; the prepared answer is cut to the 34 characters of a row)
+ *   JS8Lnnnn.TXT frame log segments:   "R <yyyymmddThhmmss> <snr> <dt> <freq> <hex22> <text>" every frame,
+ *                                      "N <hhmmss> <text>" notes / errors, "T ..." transmitted frames
+ *   JS8Mnnnn.TXT message log segments: "M <yyyymmddThhmmss> <snr> <freq> <frames> <flags> <text>"
  *                Decoder tuning (decimal numbers, out-of-range values are clamped, read once at start):
  *                  maxcand=10..300   sync candidates kept per search                      (default 300)
  *                  minscore=0..60    lowest sync score of a candidate                     (default 10)
@@ -85,51 +131,80 @@
  *                "X T.. r.. f.. s.. d.. u.. p.. t.. b.."   maxima of the P fields
  *                "P <hhmmss> d<frames> <-|D|B> T<decode> r<read> f<STFT> s<search> d<LLR+BP> u<subtract>
  *                   p<post> t<tried> b<BP runs> o<poll> i<BP iterations> w<normal>/<shifted waterfalls>
- *                   g<signals>"   one period; D = cut by the hard limit, B = cut by budget=
- *   JS8LOG.TXT   first line:    "H JS8L <nnnn> <-|F>"  (next archive number; F = the ring is full)
- *                every frame:   "R <yyyymmddThhmmss> <snr> <dt> <freq> <hex22> <text>"
- *                notes/errors:  "N <hhmmss> <text>"
- *   JS8MSG.TXT   first line:    "H JS8M <nnnn> <-|F>"
- *                every complete message: "M <yyyymmddThhmmss> <snr> <freq> <frames> <flags> <text>"
+ *                   g<signals>"   one period; D = cut by the hard limit, B = cut by budget=, T = left for a transmission
  *                flags: > to me, g to my group, m my call mentioned, c checksum ok, x checksum BAD,
  *                t closed by timeout, p beginning missing, l truncated (longer than 1023 characters),
- *                - none
- *   Text in both logs, on the DECODE screen and in the popup is printable ASCII: every other byte a
+ *                e closed because the app left (the message was still being received), - none
+ *   JS8Annnn.ADI ADIF records of marked exchanges, where the loader has no "@QLOG" (-> ICAPQSO.ADI)
+ *   JS8STA.BIN / JS8STB.BIN  the state, written in turn: ring positions, heard table, inbox, open view
+ *   Every segment is written ONCE ("H <stream> <seq> <EOH>", lines, "E <lines> <crc>") and never opened
+ *   for writing again; each stream is a ring of keep= files.  See js8app_store.h for the rules and for
+ *   what a power cut can cost (the lines still waiting in RAM, and the one file being written).
+ *   Text in the logs, on the DECODE screen and in the popup is printable ASCII: every other byte a
  *   frame or a dictionary word may carry (newline, 0x1A, Latin-1) is shown as a blank or '?', so a
  *   received frame cannot start a new log line.
- * The file API has neither append nor seek.  "Append" is therefore: the tail of each log lives in
- * RAM (loaded at start), the file is rewritten (open - write - close) at the end of a period that
- * added lines, and when the tail is full it is written out once as the next archive file
- * JS8L0001.TXT, JS8L0002.TXT ... (messages: JS8M0001.TXT ...) and started again.  The archive is a
- * RING of `keep` files per log: an existing archive is never overwritten until all `keep` numbers
- * are in use; from then on the oldest is replaced (a note says so once per run).
- * At most 2 files are open at any time (capture + one of: decode read, dictionary bucket, log).
+ *   JSC*.BIN     the dictionary - on the SD card ROOT (ICAP_O_ROOT; preferred: the loader does not list apps whose
+ *                directory entries come after ~257 files in IC-705/Apps), else in the app folder; decided at start
+ *                by JSCHEAD.BIN.  With JSCSUM.BIN (of the same place) every file is checked on its first use
+ *                (js8jsc.h): a corrupt file is not used and the frames that need it are shown raw.
+ * At most 2 files are open at any time (capture + one of: decode read, dictionary file, segment / state).
  *
- * The 8-line app window is a status view (every line is cut to the window's 40 bytes; times in ms):
- *   0 "JS8 RX <call> <flo>-<fhi> Hz"
- *   1 "ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000" the decoder tuning in use (JS8.CFG: minscore nsync/ns34 passes
- *                                               iters sub shift wide stream budget; maxcand is not shown)
- *   2 last note or error
- *   3 "last HHMMSS 12d 9845ms t65 b281 CUT"     last period: frames, decode time, candidates tried, BP runs;
- *                                               CUT = ended by the hard limit, BUD = by budget=
- *   4 "r1200 f3100 s560 d4100 u670 p300"        last period: capture read, STFT, sync search, decode (LLR +
- *                                               BP), subtraction, post (text + logs)
- *   5 "R.. F.. S.. D.. U.. P.."                 running maxima of line 4
- *   6 "dict <words> rd <SD reads> fr <frames> msg <messages> me <to me>"   (or "no dictionary, raw # ...")
- *   7 "c<cut>/<periods> k<skipped> g<gaps> av<avg decode> mx<max> T<max tried> B<max BP runs>", "LOGERR" first
+ * The 8-line app window has four views (js8feat.h; chosen by the terminal); every line is cut to
+ * the window's 40 bytes, times in ms:
+ *   STATUS  0 "JS8 RX <call> <flo>-<fhi> Hz" ("JS8 RX+TX ..." in the TX flavour)
+ *           1 "ms10 n7/10 p31 it30 su1 sh1 w1 s1 b8000"   the decoder tuning in use (JS8.CFG: minscore nsync/ns34
+ *             passes iters sub shift wide stream budget; maxcand is not shown).  TX FLAVOUR: the transmit status
+ *             instead (js8tx_status); the tuning is then in the first line of JS8PERF.TXT
+ *           2 last note or error
+ *           3 "last HHMMSS 12d 9845ms t65 b281 CUT"   last period: frames, decode time, candidates tried, BP runs;
+ *             CUT = ended by the hard limit, BUD = by budget=, TX = left for a transmission
+ *           4 "r1200 f3100 s560 d4100 u670 p300"      last period: capture read, STFT, sync search, decode (LLR +
+ *             BP), subtraction, post (text + logs)
+ *           5 "R.. F.. S.. D.. U.. P.."               running maxima of line 4
+ *           6 "dict <words> [BAD <files>] rd <SD reads> fr <frames> msg <messages> me <to me> [new <unread>]"
+ *             (or "no dictionary, raw # ...")
+ *           7 "c<cut>/<periods> k<skipped> g<gaps> av<avg decode> mx<max> T<max tried> B<max BP runs>", "LOGERR" first
+ *   BAND    the last 7 decoded lines        INBOX  the newest messages for me / my groups, unread marked
+ *   HEARD   stations heard: call, grid, SNR, audio offset, age, the report they sent us
+ * The app starts on STATUS; on the other views " !" at the end of the title says that a note or an error
+ * came which STATUS has not shown yet.
  *
  * Stop request (icap_should_stop): polled in the main loop, by the decoder's abort callback, before every
  * decoded frame is processed, in every dictionary read and between the start-up loads.  The only stretch
- * that is not interruptible is one log rewrite (<= 6 KB) plus, when a tail is full, one archive write.
+ * that is not interruptible is the write of one segment (<= 4 KB) and of the state file (1.2 KB).
  *
  * Memory: the loader's data region (icap_heap) holds, in this order, the reassembly state, the
- * dictionary state + head table, the two log tails and then the decoder work arena.
+ * dictionary state + head table, the two segment buffers, the station features (heard table, inbox,
+ * band lines, prepared replies) - together JS8_RESERVE bytes - and then the decoder work arena.
  * Built only against the public SDK icap.h.
  */
 #include "icap.h"
 #include "js8dec.h"
 #include "js8msg.h"
 #include "js8asm.h"
+#include "js8feat.h"
+#ifdef JS8_TX
+#include "js8tx.h"
+#define CFG_SZ 800                      /* JS8.CFG may carry four preset texts, info= and status= */
+#else
+#define CFG_SZ 400
+#endif
+
+#ifdef JS8_LINK
+#include "js8link.h"                    /* the terminal link (compile-time optional; binding: shell/js8app_link.h) */
+static js8link_t *lnk;                  /* in the data region; 0 until app_main has set it up */
+static void link_row(const char *row) { icap_decode_out(row); if (lnk) js8link_put(lnk, "D ", row); }
+#define icap_decode_out link_row        /* every DECODE row also goes to the terminal, exactly as shown */
+static void link_note(const char *s);
+static void link_msg(int inbox, const char *logline);
+static void link_service(void);
+#ifdef JS8_TX
+static void link_queued(void);
+static void link_tx_start(const char *row);
+static void link_tx_end(const char *line);
+static int link_stop(void);
+#endif
+#endif
 
 #define MODE_NAME  "JS8"
 #define PERIOD     15                   /* s: :00 :15 :30 :45 */
@@ -157,16 +232,21 @@
 #define JS8_HEAD_MAX 35840u             /* RAM for the dictionary head table (JSCHEAD.BIN is 34661 B) */
 #endif
 #ifndef JS8_LOG_SZ
-#define JS8_LOG_SZ   6144u              /* tail of JS8LOG.TXT kept in RAM (~70 frames) */
+#define JS8_LOG_SZ   4096u              /* frame-log lines waiting in RAM = the largest JS8L segment (~45 frames) */
 #endif
 #ifndef JS8_MSG_SZ
-#define JS8_MSG_SZ   3072u              /* tail of JS8MSG.TXT kept in RAM */
+#define JS8_MSG_SZ   1536u              /* message-log lines waiting in RAM = the largest JS8M segment (one message line is <= 1064) */
+#endif
+#ifndef JS8_RESERVE
+#define JS8_RESERVE  55936u             /* the shell's part of the data region; the decoder arena is the rest (189824 of 245760) */
 #endif
 #define DEC_W       40                  /* longest DECODE line: the native DECODE screen wraps longer rows when its mini-scope is shown */
 #define WIN_W       40                  /* app window: 40 bytes per line */
-#define LOG_HDR     16u                 /* bytes kept free in each log file for its header line (15 used) */
-#define KEEP_DFL    200                 /* archive files per log (JS8.CFG keep=) */
-#define KEEP_MAX    999
+#define KEEP_DFL    600                 /* segment files per log stream (JS8.CFG keep=): at a busy band (a segment per 4 periods) about 10 hours */
+#define KEEP_MAX    9999
+#define FLUSH_DFL   4                   /* periods a log line may wait in RAM (JS8.CFG flush=) */
+#define POP_BURST   4                   /* popups: at most this many in a row ... */
+#define POP_REFILL  20u                 /* ... and one more every 20 periods (5 minutes) */
 #define BAND_MIN    100                 /* Hz: narrowest tone-0 range accepted from JS8.CFG */
 #define PFX_W       14                  /* "HHMM sNN FFFF " */
 #define CONT_W      5                   /* indent of a continuation line */
@@ -221,18 +301,30 @@ static void set_line(int row, const char *s)     /* the app window takes 40 byte
 
 /* ---- config: JS8.CFG (key=value text); MYCALL from the radio */
 static float cfg_flo = 450.0f, cfg_fhi = 2550.0f;   /* widest range the decoder does in ONE pass in the arena left */
-static int cfg_popup = 1, cfg_keep = KEEP_DFL, cfg_band_bad;
-static int cfg_sub = 1, cfg_budget = 8000, cfg_perf = 1, cfg_stream = 1;
+#ifdef JS8_TX
+static int cfg_popup = 0;                        /* U7: no popup by default - its dismissing tap might reach the app as a row tap */
+#else
+static int cfg_popup = 1;
+#endif
+static int cfg_keep = KEEP_DFL, cfg_flush = FLUSH_DFL, cfg_band_bad;
+static char cfg_call[JS8_CALL_MAX], cfg_groups[JS8ASM_GROUPS_MAX], cfg_loc[7];
+static char mycall[JS8_CALL_MAX], mygrid[7];     /* mygrid: "" or a valid locator of 4 or 6 characters */
+static js8feat_t *feat;                          /* heard table, inbox, views, prepared replies (in the data region) */
+static int cfg_sub = 1, cfg_budget = 8000, cfg_perf = 1, cfg_stream = 1, cfg_long;
+#ifdef JS8_TX
+static int cfg_kbdirq = 0;                       /* 1: open the radio's keyboard with IRQs disabled (js8app_kbd.h; untested on the radio, S10) */
+#endif
 /* decoder tuning keys: value clamped to lo..hi */
 static const struct { const char *k; int *v; int16_t lo, hi; } tkeys[] = {
     { "maxcand", &js8_tune.max_cand, 10, 300 }, { "minscore", &js8_tune.min_score, 0, 60 },
     { "passes", &js8_tune.passmask, 1, 31 }, { "iters", &js8_tune.iters, 5, 50 }, { "sub", &cfg_sub, 0, 2 },
     { "shift", &js8_tune.shift, 0, 1 }, { "nsync", &js8_tune.nsync_min, 0, 21 },
     { "budget", &cfg_budget, 0, 14500 }, { "perf", &cfg_perf, 0, 1 }, { "stream", &cfg_stream, 0, 1 },
-    { "wide", &js8_tune.swide, 0, 1 }, { "ns34", &js8_tune.nsync34, 0, 21 }
+    { "wide", &js8_tune.swide, 0, 1 }, { "ns34", &js8_tune.nsync34, 0, 21 },
+#ifdef JS8_TX
+    { "kbdirq", &cfg_kbdirq, 0, 1 },
+#endif
 };
-static char cfg_call[JS8_CALL_MAX], cfg_groups[JS8ASM_GROUPS_MAX];
-static char mycall[JS8_CALL_MAX];
 static int kmatch(const char *s, const char *k) { int i = 0; while (k[i] && s[i] == k[i]) i++; return k[i] == 0 && s[i] == '='; }
 static int kint(const char *s)                   /* digits after '=' */
 { int v = 0, nd = 0; while (*s && *s != '=') s++; if (*s) s++; for (; *s >= '0' && *s <= '9' && nd < 6; s++, nd++) v = v * 10 + (*s - '0'); return nd ? v : -1; }
@@ -242,14 +334,76 @@ static void ktok(const char *s, char *out, int cap)  /* token after '=' (stops a
     for (; *s > ' ' && k < cap - 1; s++) out[k++] = (*s >= 'a' && *s <= 'z') ? (char)(*s - 32) : *s == ',' ? ' ' : *s;
     out[k] = 0;
 }
+/* free text after '=' up to the end of the line: printable, upper-cased, blanks trimmed.  Returns the last character
+ * of the line, so that words inside the text are not read as keys. */
+static char *ktext(char *s, char *out, int cap)
+{
+    int k = 0;
+    while (*s != '=') s++;
+    while (s[1] == ' ') s++;
+    while (s[1] && s[1] != '\n' && s[1] != '\r') { s++; if (k < cap - 1) out[k++] = clean((*s >= 'a' && *s <= 'z') ? (char)(*s - 32) : *s); }
+    while (k && out[k - 1] == ' ') k--;
+    out[k] = 0;
+    return s;
+}
+static int lc_c(int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
+static int keych(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+/* JS8.CFG as people write it -> the form the key matchers read (in place; returns the new length):
+ *   a UTF-8 BOM is skipped; a line whose first non-blank character is '#' or ';' is a comment, and so is the rest of a
+ *   line from a blank followed by '#' / ';' (but not inside a text value: info= status= tx1= .. tx4= take the whole
+ *   rest of their line); blanks around '=' are removed; key names are lower-cased (keys are case-insensitive). */
+static COLD int cfg_norm(char *b, int n)
+{
+    int i = 0, o = 0, ls = 1, txt = 0;
+    if (n >= 3 && (uint8_t)b[0] == 0xEF && (uint8_t)b[1] == 0xBB && (uint8_t)b[2] == 0xBF) i = 3;
+    while (i < n) {
+        char c = b[i];
+        if (c == '\n' || c == '\r') { b[o++] = c; i++; ls = 1; txt = 0; continue; }
+        if (txt) { b[o++] = c; i++; continue; }
+        if ((c == '#' || c == ';') && (ls || b[o - 1] == ' ' || b[o - 1] == '\t')) { while (i < n && b[i] != '\n' && b[i] != '\r') i++; continue; }
+        if (c == ' ' || c == '\t') { b[o++] = c; i++; continue; }
+        if (c == '=') {
+            int k;
+            while (o && (b[o - 1] == ' ' || b[o - 1] == '\t')) o--;
+            for (k = o; k && keych(b[k - 1]); k--) ;
+            /* a text key: the rest of the line is its value, verbatim */
+            txt = (o - k == 4 && b[k] == 'i' && b[k + 1] == 'n' && b[k + 2] == 'f' && b[k + 3] == 'o') ||
+                  (o - k == 6 && b[k] == 's' && b[k + 1] == 't' && b[k + 2] == 'a' && b[k + 3] == 't' && b[k + 4] == 'u' && b[k + 5] == 's') ||
+                  (o - k == 3 && b[k] == 't' && b[k + 1] == 'x' && b[k + 2] >= '1' && b[k + 2] <= '4');
+            b[o++] = '='; i++;
+            while (i < n && (b[i] == ' ' || b[i] == '\t')) i++;
+            ls = 0;
+            continue;
+        }
+        if (keych(c) && (o == 0 || !keych(b[o - 1]))) {   /* a token that is a key (name, blanks, '='): lower case */
+            int j = i, e;
+            while (j < n && keych(b[j])) j++;
+            for (e = j; e < n && (b[e] == ' ' || b[e] == '\t'); e++) ;
+            if (e < n && b[e] == '=') { while (i < j) { b[o++] = (char)lc_c(b[i]); i++; } ls = 0; continue; }
+        }
+        b[o++] = c; i++; ls = 0;
+    }
+    b[o] = 0;
+    return o;
+}
+static int grid_ok(const char *g) { return g[0] >= 'A' && g[0] <= 'R' && g[1] >= 'A' && g[1] <= 'R' && g[2] >= '0' && g[2] <= '9' && g[3] >= '0' && g[3] <= '9'; }
+#ifdef JS8_TX
+static js8tx_t txq;
+#endif
 static COLD void read_cfg(void)
 {
-    char b[400];
+    char b[CFG_SZ];
     int fd = icap_open(F_CFG, ICAP_O_READ), n;
     if (fd >= 0) {
-        n = icap_read(fd, b, sizeof b - 1); icap_close(fd);
-        if (n < 0) n = 0;
-        b[n] = 0;
+        int r;
+        n = 0;
+        while (n < (int)sizeof b - 1 && (r = icap_read(fd, b + n, (uint32_t)(sizeof b - 1 - n))) > 0) n += r;
+        if (n == (int)sizeof b - 1) {            /* longer than we read: the keys after the limit are NOT used - said after the start */
+            char x;
+            if (icap_read(fd, &x, 1) > 0) { cfg_long = 1; while (n && b[n - 1] != '\n' && b[n - 1] != '\r') n--; }   /* (the cut line is dropped whole) */
+        }
+        icap_close(fd);
+        n = cfg_norm(b, n);
         for (char *s = b; *s; s++) {             /* keys are matched only at a token start */
             if (s != b && s[-1] != '\n' && s[-1] != '\r' && s[-1] != ' ' && s[-1] != '\t') continue;
             if (kmatch(s, "flo")) { int v = kint(s); if (v >= 0 && v <= F_MAXCFG) cfg_flo = (float)v; }
@@ -258,6 +412,16 @@ static COLD void read_cfg(void)
             else if (kmatch(s, "groups")) ktok(s, cfg_groups, sizeof cfg_groups);
             else if (kmatch(s, "popup")) { int v = kint(s); if (v >= 0) cfg_popup = v != 0; }
             else if (kmatch(s, "keep")) { int v = kint(s); if (v >= 2 && v <= KEEP_MAX) cfg_keep = v; }
+            else if (kmatch(s, "flush")) { int v = kint(s); if (v >= 1 && v <= 40) cfg_flush = v; }
+            else if (kmatch(s, "loc")) ktok(s, cfg_loc, sizeof cfg_loc);
+            else if (kmatch(s, "info")) s = ktext(s, feat->info, sizeof feat->info);
+            else if (kmatch(s, "status")) s = ktext(s, feat->status, sizeof feat->status);
+#ifdef JS8_LINK
+            else if (js8link_cfg(lnk, s)) { }
+#endif
+#ifdef JS8_TX
+            else if (js8tx_cfg(&txq, s) == 2) { while (s[1] && s[1] != '\n' && s[1] != '\r') s++; }   /* a preset text: skip the line */
+#endif
             else for (unsigned i = 0; i < sizeof tkeys / sizeof tkeys[0]; i++)
                 if (kmatch(s, tkeys[i].k)) { int v = kint(s); if (v >= 0) *tkeys[i].v = v < tkeys[i].lo ? tkeys[i].lo : v > tkeys[i].hi ? tkeys[i].hi : v; }
         }
@@ -268,149 +432,43 @@ static COLD void read_cfg(void)
     js8_tune.budget = cfg_budget;                /* the decoder: no further pass that cannot end in time; dec_abort: the cut */
     /* the decoder refuses a band of fewer than 16 bins; a typing error must not silence the receiver */
     if (cfg_fhi - cfg_flo < (float)BAND_MIN) { cfg_band_bad = cfg_flo != 450.0f || cfg_fhi != 2550.0f; cfg_flo = 450.0f; cfg_fhi = 2550.0f; }
-    /* MYCALL: the radio's own ("@MYCALL", empty = not set), else call= from JS8.CFG */
+    /* MYCALL: call= of JS8.CFG overrides the radio's own ("@MYCALL", empty = not set) */
     mycall[0] = 0;
     fd = icap_open("@MYCALL", ICAP_O_READ);
     if (fd >= 0) {
         n = icap_read(fd, b, 31); icap_close(fd);
         if (n > 0) { b[n] = 0; b[n + 1] = 0; for (int i = n; i >= 0; i--) b[i + 1] = b[i]; b[0] = '='; ktok(b, mycall, sizeof mycall); }
     }
-    if (!mycall[0]) cat(mycall, cfg_call);
+    if (cfg_call[0]) cat(mycall, cfg_call);
+    /* the locator: the radio's position ("@MYLOC", 6 characters, empty = no fix), else loc= of JS8.CFG */
+    fd = icap_open("@MYLOC", ICAP_O_READ);
+    if (fd >= 0) {
+        n = icap_read(fd, b + 1, 31); icap_close(fd);
+        if (n >= 4) { b[0] = '='; b[n + 1] = 0; ktok(b, mygrid, sizeof mygrid); }
+    }
+    if (!grid_ok(mygrid)) { mygrid[0] = 0; if (grid_ok(cfg_loc)) cat(mygrid, cfg_loc); }
+    if (slen(mygrid) != 6) mygrid[4] = 0;
+#ifdef JS8_TX
+    txq.grid[0] = 0; js8tx_set_grid(&txq, mygrid);
+#endif
 }
 
-/* ---- logs.  No append mode in the API: the tail is kept in RAM (loaded at start) and the file rewritten; a full
- * tail goes out once as the next archive file <pfx>0001.TXT ... and the tail starts again.
- * The archive is a ring of cfg_keep files.  Its position is the first line of the log file ("H JS8L 0042 -"):
- *   next  the number the next archive gets (0 = not known: found by probing at the first rollover)
- *   full  every number 1..cfg_keep is in use; from now on the oldest archive is overwritten
- * As long as the ring is not full an existing archive is never overwritten: a number that is taken (the owner
- * deleted older files, or the header is stale) is skipped. */
-typedef struct { const char *name; const char *pfx; char *buf; uint32_t cap, len; int dirty, next, full, said; } alog_t;
-static alog_t lg_frames = { F_LOG, "JS8L", 0, 0, 0, 0, 0, 0, 0 }, lg_msgs = { F_MSG, "JS8M", 0, 0, 0, 0, 0, 0, 0 };
-static int log_err;                              /* a log write failed (shown on the panel) */
-static const char *pending_note;                 /* a note that could not be written from inside log_add */
-
-static int log_hdr_parse(alog_t *l, const char *t, int n)   /* "H JS8L 0042 -\r\n" -> bytes used (15), or 0 */
-{
-    int v = 0;
-    if (n < 15 || t[0] != 'H' || t[1] != ' ' || t[6] != ' ' || t[11] != ' ' || t[13] != '\r' || t[14] != '\n') return 0;
-    for (int i = 0; i < 4; i++) if (t[2 + i] != l->pfx[i]) return 0;
-    for (int i = 7; i < 11; i++) { if (t[i] < '0' || t[i] > '9') return 0; v = v * 10 + (t[i] - '0'); }
-    if (t[12] != '-' && t[12] != 'F') return 0;
-    if (v >= 1 && v <= cfg_keep) { l->next = v; l->full = t[12] == 'F'; }   /* out of range (keep= was lowered): probe again */
-    return 15;
-}
-static char iob[512];                            /* scratch: read buffer of log_load, line buffer of JS8PERF.TXT */
-static void log_load(alog_t *l)                  /* the buffer holds cap + LOG_HDR bytes */
-{
-    int fd = icap_open(l->name, ICAP_O_READ); if (fd < 0) return;
-    char *const t = iob; int r;
-    const uint32_t cap = l->cap + LOG_HDR;
-    while ((r = icap_read(fd, t, sizeof iob)) > 0) {
-        if (l->len + (uint32_t)r > cap) { uint32_t cut = l->len + (uint32_t)r - cap; while (cut < l->len && l->buf[cut] != '\n') cut++; if (cut < l->len) cut++; mvdown(l->buf, l->buf + cut, l->len - cut); l->len -= cut; }
-        if ((uint32_t)r > cap - l->len) r = (int)(cap - l->len);
-        memcpy(l->buf + l->len, t, (unsigned)r); l->len += (uint32_t)r;
-        pump();
-        if (stop()) break;
-    }
-    icap_close(fd);
-    r = log_hdr_parse(l, l->buf, (int)l->len);   /* our own header line: take it out of the tail */
-    if (r) { mvdown(l->buf, l->buf + r, l->len - (uint32_t)r); l->len -= (uint32_t)r; }
-    if (l->len && l->buf[l->len - 1] != '\n') { if (l->len + 2 > cap) l->len = cap - 2; l->buf[l->len++] = '\r'; l->buf[l->len++] = '\n'; }
-    if (l->len > l->cap) {                       /* a file without the header (older version, foreign): keep the newest lines */
-        uint32_t cut = l->len - l->cap; while (cut < l->len && l->buf[cut] != '\n') cut++; if (cut < l->len) cut++;
-        mvdown(l->buf, l->buf + cut, l->len - cut); l->len -= cut;
-    }
-}
-/* open - write - close, pumping audio in between.  Not interruptible: a rewrite that stops half way would leave
- * a cut file, so a stop request waits for the (at most 6 KB) to be written. */
-static int log_write(const char *name, const char *hdr, const char *p, uint32_t n)
-{
-    int fd = icap_open(name, ICAP_O_WRITE), ok = 1;
-    if (fd < 0) return 0;
-    if (hdr) { int hl = slen(hdr); if (icap_write(fd, hdr, (uint32_t)hl) != hl) ok = 0; }
-    while (n && ok) {
-        uint32_t m = n > 1024u ? 1024u : n;
-        if (icap_write(fd, p, m) != (int)m) ok = 0;
-        p += m; n -= m;
-        pump();
-    }
-    icap_close(fd);
-    return ok;
-}
-static void arch_name(const alog_t *l, int i, char *nm) { char *q = cat(nm, l->pfx); q = num(q, i, 4, '0'); cat(q, ".TXT"); }
-static int arch_exists(const alog_t *l, int i)
-{
-    char nm[16]; arch_name(l, i, nm);
-    int fd = icap_open(nm, ICAP_O_READ);
-    pump();
-    if (fd < 0) return 0;
-    icap_close(fd); return 1;
-}
-static int log_rollover(alog_t *l)               /* tail -> next archive file; 1 = written */
-{
-    char nm[16];
-    if (l->next < 1 || l->next > cfg_keep) {     /* not known: the lowest free number (archives are normally contiguous) */
-        int lo = 0, hi = 1;
-        l->full = 0;
-        while (hi <= cfg_keep && arch_exists(l, hi)) { lo = hi; hi *= 2; }
-        if (hi > cfg_keep + 1) hi = cfg_keep + 1;
-        while (hi - lo > 1) { int mid = (lo + hi) / 2; if (arch_exists(l, mid)) lo = mid; else hi = mid; }
-        l->next = hi > cfg_keep ? 1 : hi;        /* past the end: the scan below decides whether the ring is full */
-    }
-    if (!l->full) {                              /* never overwrite before every number is in use */
-        int tries = 0, start = l->next;
-        while (arch_exists(l, l->next)) {
-            /* every number is taken: the ring is full.  Go on at the number we came to in order - after a wrap
-             * that is the oldest archive (not the one the scan happened to end on, which is the newest) */
-            if (++tries >= cfg_keep) { l->full = 1; l->next = start; break; }
-            if (++l->next > cfg_keep) l->next = 1;
-        }
-    }
-    if (l->full && !l->said) {                   /* say it once per run; the note itself is written by the caller's caller */
-        l->said = 1;
-        pending_note = l == &lg_frames ? MODE_NAME ": log ring full, oldest JS8L* replaced" : MODE_NAME ": msg ring full, oldest JS8M* replaced";
-    }
-    arch_name(l, l->next, nm);
-    if (!log_write(nm, 0, l->buf, l->len)) return 0;
-    if (++l->next > cfg_keep) l->next = 1;
-    return 1;
-}
-static void log_add(alog_t *l, const char *s)
-{
-    int n = slen(s);
-    if (!l->buf) return;
-    if ((uint32_t)n + 2 > l->cap) n = (int)l->cap - 2;
-    if (l->len + (uint32_t)n + 2 > l->cap) {
-        if (log_rollover(l)) l->len = 0;
-        else {                                   /* archive not possible (card full?): drop the older half */
-            uint32_t cut = l->len / 2; while (cut < l->len && l->buf[cut] != '\n') cut++; if (cut < l->len) cut++;
-            mvdown(l->buf, l->buf + cut, l->len - cut); l->len -= cut; log_err = 1;
-            if (l->len + (uint32_t)n + 2 > l->cap) l->len = 0;
-        }
-    }
-    memcpy(l->buf + l->len, s, (unsigned)n); l->len += (uint32_t)n; l->buf[l->len++] = '\r'; l->buf[l->len++] = '\n';
-    l->dirty = 1;
-}
-static void log_flush(alog_t *l)
-{
-    char h[LOG_HDR], *q;
-    if (!l->dirty) return;
-    q = cat(h, "H "); q = cat(q, l->pfx); *q++ = ' '; q = num(q, l->next >= 1 && l->next <= KEEP_MAX ? l->next : 0, 4, '0');
-    *q++ = ' '; *q++ = l->full ? 'F' : '-'; *q++ = '\r'; *q++ = '\n'; *q = 0;
-    if (log_write(l->name, h, l->buf, l->len)) l->dirty = 0; else log_err = 1;
-}
+/* ---- logs: segment files written once, a ring per stream, the state file pair (see js8app_store.h) */
+#include "js8app_store.h"
 static char last_note[41];
 static int n_notes;
 static void note_at(int hh, int mm, int ss, const char *s)    /* status / error: app window line 2 + the frame log */
 {
     char b[120], *q = b;
     int k = 0; while (s[k] && k < 40) { last_note[k] = clean(s[k]); k++; } last_note[k] = 0;
-    set_line(2, last_note);
+    if (!feat || !feat->k.view) set_line(2, last_note);
+#ifdef JS8_LINK
+    link_note(last_note);
+#endif
     *q++ = 'N'; *q++ = ' ';
     if (hh >= 0) q = hhmmss(q, hh, mm, ss); else q = cat(q, "------");
     *q++ = ' '; k = 0; while (s[k] && k < 100) *q++ = clean(s[k++]); *q = 0;
-    log_add(&lg_frames, b); log_flush(&lg_frames); n_notes++;
+    log_add(&lg_frames, b); lg_frames.urgent = 1; n_notes++;   /* written at the end of this period / from the idle loop */
 }
 static void note(const char *s) { note_at(-1, 0, 0, s); }
 
@@ -478,16 +536,26 @@ static void cap_put(const int16_t *x, uint32_t k)
     if (cap.n + k > CAP_SAMP) k = CAP_SAMP - cap.n;
     if (!k) return;
     if (x) { if (icap_write(cap.fd, x, k * 2) != (int)(k * 2)) { cap.werr = 1; return; } js8_stream_put(x, k); }   /* keep n == file */
-    else {                                       /* zeros for lost audio, so later samples keep their time */
-        static const int16_t z[200];
-        uint32_t left = k;
-        while (left) { uint32_t m = left > 200 ? 200 : left; if (icap_write(cap.fd, z, m * 2) != (int)(m * 2)) { cap.werr = 1; return; } left -= m; cap.n += m; js8_stream_put(0, m); }
+    else {                                       /* zeros for lost audio, so later samples keep their time.  The read buffer is
+                                                  * free here (pump: the ring is drained), so it is the block of zeros (no 400 B
+                                                  * constant: the full app needs the room since 24 Nov 2026) */
+        uint32_t left = k, m;
+        for (m = 0; m < sizeof abuf / sizeof abuf[0]; m++) abuf[m] = 0;
+        while (left) { m = left > sizeof abuf / sizeof abuf[0] ? sizeof abuf / sizeof abuf[0] : left; if (icap_write(cap.fd, abuf, m * 2) != (int)(m * 2)) { cap.werr = 1; return; } left -= m; cap.n += m; js8_stream_put(0, m); }
         return;
     }
     cap.n += k;
 }
+#ifdef JS8_TX
+/* the radio clock has whole seconds only: pump() notes the tick at which it saw a second begin */
+static struct { int sec, edge, sod; uint32_t tick; } txc = { -1, 0, 0, 0 };
+static int tx_busy;                              /* inside tx_slot(): the capture is frozen, pump() does nothing */
+#endif
 static void pump_(void)
 {
+#ifdef JS8_TX
+    if (tx_busy) return;
+#endif
     for (int guard = 0; guard < 64; guard++) {   /* bounded: never spin on a stuck overrun */
         int r = icap_audio_read(abuf, (int)(sizeof abuf / sizeof abuf[0]));
         if (r == ICAP_E_OVERRUN) { gaps++; continue; }
@@ -512,6 +580,9 @@ static void pump_(void)
     if (icap_clock_now(&t) != 0 || t.year < 2020) { cap.clock_bad = 1; return; }
     cap.clock_bad = 0;
     cur_ymd = (uint32_t)t.year * 10000u + (uint32_t)t.mon * 100u + t.day;
+#ifdef JS8_TX
+    if (t.sec != txc.sec) { txc.edge = txc.sec >= 0; txc.sec = t.sec; txc.tick = icap_ticks(); txc.sod = (t.hour * 60 + t.min) * 60 + t.sec; }
+#endif
     /* start of a capture: the second edge of the period (late: a missed second edge, a stall, an RTC step) */
     int sp = t.sec % PERIOD;
     if (cap.fd < 0 && (sp >= (int)(PERIOD - PREROLL) || sp == 0)) {
@@ -598,6 +669,20 @@ static int src_read(void *ctx, uint32_t start, float *out, uint32_t n)
     }
     return (int)got;
 }
+/* one scratch buffer for two users that never overlap: on_message() builds its message-log line in it, and
+ * perf_write() (main loop, after the results of a period) the text of JS8PERF.TXT */
+static char iob[40 + JS8ASM_TEXT_MAX];
+#ifdef JS8_TX
+static void kbd_poll1(int inmain);
+#endif
+#ifdef JS8_TX
+static void kbd_resync(void);
+static void kbd_cont(const char *line, int first);
+#endif
+#ifdef JS8_TX
+#include "js8app_tx.h"                           /* transmit glue: txio, tx_slot(), tx_service() */
+#endif
+
 static uint32_t last_yield, dec_t0;              /* dec_t0: tick at the start of the decode in work */
 static int timed_out, bud_cut;
 static void polite(void)
@@ -611,6 +696,13 @@ static int dec_abort(void)
     if (stop()) return 1;
     if (decoding >= 0 && done[decoding ^ 1].ready) { timed_out = 1; return 1; }   /* next period complete */
     if (cfg_budget && icap_ticks() - dec_t0 >= (uint32_t)cfg_budget) { bud_cut = 1; return 1; }   /* JS8.CFG budget= */
+#ifdef JS8_TX
+    if (txpoll() == 0) { tx_cut = 1; return 1; }   /* a confirmed transmission is due: leave the decoder */
+    kbd_poll1(0);                                /* a tap on a row: the radio's keyboard (no file read of JS8MEM.TXT in here) */
+#endif
+#ifdef JS8_LINK
+    link_service();
+#endif
     return 0;
 }
 
@@ -624,7 +716,12 @@ static void dec_reset(void)
 }
 
 /* ---- dictionary files (one bucket file open per lookup; audio keeps being pumped) */
-static int jio_open(void *u, const char *name) { (void)u; return icap_open(name, ICAP_O_READ); }
+/* Where the dictionary is (loader limit seen on the radio 23 Nov 2026: .APP files whose directory entries come after the
+ * ~257 dictionary files in IC-705/Apps are not listed): the SD card ROOT first (ICAP_O_ROOT: JSCHEAD.BIN, JSCD*.BIN, JSCE*.BIN,
+ * JSCSUM.BIN), else the app folder as before.  Decided once at start by JSCHEAD.BIN; every file is still checked against
+ * JSCSUM.BIN of the same place. */
+static int jsc_where;                            /* 0 = the app folder, ICAP_O_ROOT = the card root */
+static int jio_open(void *u, const char *name) { (void)u; return icap_open(name, ICAP_O_READ | jsc_where); }
 /* a stop request ends a lookup at once (the read fails, the frame in work is dropped by on_frame) */
 static int jio_read(void *u, int fd, void *buf, uint32_t len) { (void)u; if (stop()) return -1; int r = icap_read(fd, buf, len); polite(); return r; }
 static int jio_close(void *u, int fd) { (void)u; return icap_close(fd); }
@@ -672,30 +769,44 @@ static void dec_lines(int snr, int freq, char mark, const char *text)
         *q = 0;
         while (pos < n && text[pos] == ' ') pos++;   /* a continuation line does not start with the blank */
         icap_decode_out(line);
+#ifdef JS8_TX
+        kbd_cont(line, first);                   /* a tap on a continuation row takes this call (U6) */
+#endif
+        if (first) js8f_band(feat, line);        /* the BAND view of the app window */
         first = 0;
     } while (pos < n);
 }
 static void pend_flush(void) { if (pend_on) { pend_on = 0; dec_lines(pend_snr, pend_freq, 0, pend); } }
 
 static char *stamp(char *q) { q = num(q, (int)now_p.ymd, 8, '0'); *q++ = 'T'; return hhmmss(q, now_p.hh, now_p.mm, now_p.ss); }
+static uint32_t p_abs(void) { return js8f_time(now_p.ymd, (now_p.hh * 60 + now_p.mm) * 60 + now_p.ss); }   /* the period being reported */
+static uint32_t t_now(void)                      /* the radio clock as absolute seconds (ages in the views) */
+{
+    struct icap_time t;
+    if (icap_clock_now(&t) != 0 || t.year < 2020) return p_abs();
+    return js8f_time((uint32_t)t.year * 10000u + (uint32_t)t.mon * 100u + t.day, (t.hour * 60 + t.min) * 60 + t.sec);
+}
+static int leaving;                              /* the app is leaving: messages still open are logged ('e'), nothing is shown */
+static uint32_t pop_tok = POP_BURST, pop_refill; /* popup budget */
 
 static void on_message(void *user, const js8asm_msg_t *m)   /* js8asm: one complete message */
 {
-    static char b[40 + JS8ASM_TEXT_MAX];
+    char *const b = iob;
     char *q = b;
     int tome = (m->flags & JS8ASM_F_TO_ME) != 0;
     (void)user;
     n_msgs++;
     /* DECODE screen.  A message closed by timeout / a new message on its frequency comes BEFORE the frame that
      * closed it; a message completed by the current frame comes after that frame's line. */
-    if (m->flags & JS8ASM_F_TIMEOUT) {           /* (a one-frame message was already shown as its frame line) */
-        if (m->frames > 1 || tome) dec_lines(m->snr, m->freq, tome ? '>' : '=', m->text);
+    if (leaving) { }
+    else if (m->flags & JS8ASM_F_TIMEOUT) {      /* (a one-frame message was already shown as its frame line) */
+        if (m->frames > 1 || tome) dec_lines(m->snr, m->freq, tome ? '>' : (m->flags & JS8ASM_F_CRC_BAD) ? '?' : '=', m->text);
     }
     else if (m->frames == 1 && pend_on) {        /* the frame is the message: one line */
         if (tome) { pend_on = 0; dec_lines(m->snr, m->freq, '>', m->text); }
         else pend_flush();
-    } else { pend_flush(); dec_lines(m->snr, m->freq, tome ? '>' : '=', m->text); }
-    /* JS8MSG.TXT */
+    } else { pend_flush(); dec_lines(m->snr, m->freq, tome ? '>' : (m->flags & JS8ASM_F_CRC_BAD) ? '?' : '=', m->text); }
+    /* message log */
     *q++ = 'M'; *q++ = ' '; q = stamp(q); *q++ = ' '; q = snr3(q, m->snr); *q++ = ' '; q = num(q, m->freq, 0, ' '); *q++ = ' ';
     q = num(q, m->frames, 0, ' '); *q++ = ' ';
     {
@@ -708,14 +819,30 @@ static void on_message(void *user, const js8asm_msg_t *m)   /* js8asm: one compl
         if (m->flags & JS8ASM_F_TIMEOUT) *q++ = 't';
         if (m->flags & JS8ASM_F_PARTIAL) *q++ = 'p';
         if (m->flags & JS8ASM_F_TRUNC) *q++ = 'l';
+        if (leaving) *q++ = 'e';
         if (q == f0) *q++ = '-';
     }
     *q++ = ' '; cat_clean(q, m->text);
     log_add(&lg_msgs, b);
-    if (tome) {                                  /* raise it once: up to 7 lines of up to 31 characters */
+    {   /* inbox; a query to MYCALL: the answer is PREPARED as a "TX? ..." row - sending it needs the operator's taps */
+        int fr = js8f_message(feat, m, mygrid, p_abs());
+        if (fr) snap_dirty = 1;
+        if (fr == 1 || fr == 2) lg_msgs.urgent = 1;
+#ifdef JS8_LINK
+        link_msg(fr != 0, b);
+#endif
+#ifdef JS8_TX
+        if (fr == 2 && !leaving && txq.enable && !txq.dead && !txq.test) {   /* a tap on it (or on the query) opens the keyboard with it */
+            char l[8 + JS8F_REPLY];
+            cat(cat(l, "TX? "), js8f_last_reply(feat));     /* (4 + at most 34 characters: one row) */
+            icap_decode_out(l);
+        }
+#endif
+    }
+    if (tome) n_tome++;
+    if (tome && !leaving) {                      /* raise it once: up to 7 lines of up to 31 characters */
         char p[7 * 32 + 1], *w = p;
         int n = slen(m->text), pos = 0, lines = 1;
-        n_tome++;
         w = cat(w, "JS8 message for "); w = cat(w, asmb->mycall);
         while (pos < n && lines < 7) {
             int k = n - pos;
@@ -726,11 +853,13 @@ static void on_message(void *user, const js8asm_msg_t *m)   /* js8asm: one compl
             while (pos < n && m->text[pos] == ' ') pos++;
         }
         *w = 0;
-        /* the popup is modal and any station can address us: at most one per period, and none for a message
-         * whose checksum is wrong (both are still marked '>' on the DECODE screen and in JS8MSG.TXT) */
+        /* the popup is modal and any station can address us: at most one per period, at most POP_BURST in a row and
+         * then one per POP_REFILL periods, and none for a message whose checksum is wrong or that is incomplete
+         * (closed by timeout, beginning missing, cut).  All of them are still marked '>' on the DECODE screen and in
+         * the message log, and are in the inbox. */
         if (!cfg_popup) { }
-        else if ((m->flags & JS8ASM_F_CRC_BAD) || pop_period == n_periods) n_popskip++;
-        else { pop_period = n_periods; if (icap_popup(p) != 0) n_popbusy++; }
+        else if ((m->flags & (JS8ASM_F_CRC_BAD | JS8ASM_F_TIMEOUT | JS8ASM_F_PARTIAL | JS8ASM_F_TRUNC)) || pop_period == n_periods || !pop_tok) n_popskip++;
+        else { pop_period = n_periods; pop_tok--; if (icap_popup(p) != 0) n_popbusy++; }
     }
 }
 
@@ -750,7 +879,8 @@ static void on_frame(const js8_result_t *r, uint32_t now_s)
     js8_msg_decode(r->frame, jsc, &m);
     if (quit) return;                            /* stop came during a dictionary lookup: the text is not complete */
     n_frames++;
-    /* JS8LOG.TXT: R <utc> <snr> <dt> <freq> <hex22> <text> */
+    js8f_frame(feat, &m, snr, freq, p_abs());    /* heard table */
+    /* frame log: R <utc> <snr> <dt> <freq> <hex22> <text> */
     *q++ = 'R'; *q++ = ' '; q = stamp(q); *q++ = ' '; q = snr3(q, snr); *q++ = ' ';
     if (dt > 999) dt = 999; else if (dt < -999) dt = -999;
     *q++ = dt < 0 ? '-' : '+'; if (dt < 0) dt = -dt;
@@ -766,6 +896,9 @@ static void on_frame(const js8_result_t *r, uint32_t now_s)
         int k = 0; while (m.text[k] && k < (int)sizeof pend - 1) { pend[k] = clean(m.text[k]); k++; } pend[k] = 0;
     }
     pend_snr = snr; pend_freq = freq; pend_on = 1;
+#ifdef JS8_TX
+    js8tx_heard(&txq, freq);                     /* the automatic TX offset keeps away from what was just decoded */
+#endif
     js8asm_feed(asmb, &m, freq, snr, now_s);     /* may call on_message() */
     pend_flush();
 }
@@ -773,6 +906,11 @@ static void on_frame(const js8_result_t *r, uint32_t now_s)
 /* ---- status view, per-stage timing, JS8PERF.TXT */
 static uint32_t dec_ms_last, dec_ms_max, dec_ms_sum, arena_peak, arena_len;
 static int last_nd;
+static unsigned dict_bad;                        /* corrupt dictionary files already reported */
+static int notes_seen;                           /* n_notes when the STATUS view was last drawn */
+#ifdef DIGI_HOST
+static char *spare_p; static uint32_t spare_n;   /* the unused end of the shell's part of the data region */
+#endif
 enum { V_TOT, V_RD, V_FFT, V_SRCH, V_DEC, V_SUB, V_POST, V_TRIED, V_NBP, PV_N };   /* per period: panel + "P" line */
 static const char pvn[PV_N + 1] = "Trfsduptb";
 typedef struct { uint16_t key; uint8_t nd, fl; uint16_t v[PV_N + 2]; uint8_t wf, sig; } prec_t;   /* v[PV_N] = poll ms, v[PV_N + 1] = BP iterations */
@@ -816,10 +954,19 @@ static COLD void perf_add(int key, int nd, int fl, uint32_t ms, uint32_t post, u
 static COLD char *kv(char *q, const char *k, int v) { q = cat(q, k); return num(q, v, 0, ' '); }
 static COLD char *head_line(char *q)                  /* panel line 0 */
 {
-    q = cat(q, MODE_NAME " RX "); q = cat(q, mycall[0] ? mycall : "(no call)");
-    q = kv(q, " ", (int)cfg_flo); q = kv(q, "-", (int)cfg_fhi); return cat(q, " Hz");
+#ifdef JS8_TX
+    q = cat(q, MODE_NAME " RX+TX ");
+#else
+    q = cat(q, MODE_NAME " RX ");
+#endif
+    q = cat(q, mycall[0] ? mycall : "(no call)");
+    q = kv(q, " ", (int)cfg_flo); q = kv(q, "-", (int)cfg_fhi); q = cat(q, " Hz");
+#ifdef JS8_BUILD
+    q = cat(cat(q, " "), JS8_BUILD);              /* the build (git commit) - visible on every photo of the window */
+#endif
+    return q;
 }
-static COLD char *tune_line(char *q)                  /* panel line 1: the decoder tuning in use */
+static COLD __attribute__((unused)) char *tune_line(char *q)                  /* panel line 1: the decoder tuning in use */
 {
     q = kv(q, "ms", js8_tune.min_score); q = kv(q, " n", js8_tune.nsync_min); q = kv(q, "/", js8_tune.nsync34);
     q = kv(q, " p", js8_tune.passmask); q = kv(q, " it", js8_tune.iters); q = kv(q, " su", js8_tune.subpasses - 1);
@@ -830,11 +977,24 @@ static COLD void panel(void)
 {
     char l[128], *q;
     const prec_t *r = &pring[(pr_n ? pr_n - 1 : 0) % PERF_N];
+    if (feat->k.view) {                          /* BAND / INBOX / HEARD take the whole window */
+        uint32_t now = t_now();
+        for (int i = 0; i < 8; i++) {
+            js8f_row(feat, feat->k.view, i, now, l);
+            /* a note or an error came that the STATUS view has not shown yet: mark the title */
+            if (!i && (n_notes != notes_seen || log_err) && slen(l) <= WIN_W - 2) cat(l + slen(l), " !");
+            set_line(i, l);
+        }
+        return;
+    }
+    notes_seen = n_notes;
     head_line(l); set_line(0, l);
+#ifndef JS8_TX
     tune_line(l); set_line(1, l);
+#endif                                           /* TX flavour: line 1 is the transmit status (tx_panel) */
     set_line(2, last_note[0] ? last_note : "no errors");
     q = cat(l, "last "); q = hhmmss(q, now_p.hh, now_p.mm, now_p.ss); q = kv(q, " ", last_nd); q = kv(q, "d ", (int)dec_ms_last);
-    q = kv(q, "ms t", r->v[V_TRIED]); q = kv(q, " b", r->v[V_NBP]); cat(q, r->fl & 1 ? " CUT" : r->fl & 2 ? " BUD" : "");
+    q = kv(q, "ms t", r->v[V_TRIED]); q = kv(q, " b", r->v[V_NBP]); cat(q, r->fl & 1 ? " CUT" : r->fl & 2 ? " BUD" : r->fl & 4 ? " TX" : "");
     set_line(3, l);
     for (int up = 0; up < 2; up++) {             /* line 4: last period, line 5: maxima (capital letters) */
         const uint16_t *v = up ? pv_max : r->v;
@@ -842,9 +1002,10 @@ static COLD void panel(void)
         for (int i = V_RD; i <= V_POST; i++) { if (i > V_RD) *q++ = ' '; *q++ = (char)(pvn[i] - (up ? 32 : 0)); q = num(q, v[i], 0, ' '); }
         set_line(4 + up, l);
     }
-    if (jsc) { q = kv(l, "dict ", (int)jsc->head_n); q = kv(q, " rd ", (int)jsc->st_opens); }
+    if (jsc) { q = kv(l, "dict ", (int)jsc->head_n); if (jsc->st_bad) q = kv(q, " BAD ", jsc->st_bad); q = kv(q, " rd ", (int)jsc->st_opens); }
     else q = kv(l, "no dictionary, raw # ", (int)n_raw);
-    q = kv(q, " fr ", (int)n_frames); q = kv(q, " msg ", (int)n_msgs); kv(q, " me ", (int)n_tome);
+    q = kv(q, " fr ", (int)n_frames); q = kv(q, " msg ", (int)n_msgs); q = kv(q, " me ", (int)n_tome);
+    if (feat->k.unread) kv(q, " new ", feat->k.unread);
     set_line(6, l);
     q = cat(l, log_err ? "LOGERR " : "");      /* first: the flag must stay visible */
     q = kv(q, "c", (int)n_cut); q = kv(q, "/", (int)n_periods); q = kv(q, " k", (int)n_skipped); q = kv(q, " g", (int)gaps);
@@ -852,6 +1013,20 @@ static COLD void panel(void)
     q = kv(q, " T", pv_max[V_TRIED]); kv(q, " B", pv_max[V_NBP]);
     set_line(7, l);
 }
+
+
+#ifdef JS8_TX
+static char txp_last[WIN_W + 8];
+static void tx_panel(void)                       /* app window line 1 of the STATUS view, whenever it changes */
+{
+    char l[WIN_W + 24];
+    int i;
+    if (feat->k.view) return;
+    js8tx_status(&txq, l);
+    for (i = 0; l[i] && l[i] == txp_last[i]; i++) ;
+    if (l[i] || txp_last[i]) { for (i = 0; l[i] && i < WIN_W; i++) txp_last[i] = l[i]; txp_last[i] = 0; set_line(1, l); }
+}
+#endif
 
 #if JS8_PERF_FILE
 /* JS8PERF.TXT: rewritten after every period (the file API has no append): header, sums, maxima, the last
@@ -882,7 +1057,7 @@ static COLD void perf_write(void)
         const prec_t *r = &pring[k % PERF_N];
         int sec = r->key * PERIOD;
         *q++ = 'P'; *q++ = ' '; q = hhmmss(q, sec / 3600, sec / 60 % 60, sec % 60);
-        q = pf_kv(q, 'd', ' ', r->nd); *q++ = ' '; *q++ = r->fl & 1 ? 'D' : r->fl & 2 ? 'B' : '-';
+        q = pf_kv(q, 'd', ' ', r->nd); *q++ = ' '; *q++ = r->fl & 1 ? 'D' : r->fl & 2 ? 'B' : r->fl & 4 ? 'T' : '-';
         for (int i = 0; i < PV_N; i++) q = pf_kv(q, pvn[i], ' ', r->v[i]);
         q = pf_kv(q, 'o', ' ', r->v[PV_N]); q = pf_kv(q, 'i', ' ', r->v[PV_N + 1]); q = pf_kv(q, 'w', ' ', r->wf >> 4);
         q = kv(q, "/", r->wf & 15); q = pf_kv(q, 'g', ' ', r->sig);
@@ -895,14 +1070,93 @@ static COLD void perf_write(void)
 }
 #endif
 
+#if defined JS8_LINK || defined JS8_HOST_CMD          /* (only the terminal and the test bench give commands) */
+/* ---- operator commands.  They come from the
+ * terminal; none of them transmits.
+ *   VIEW [STATUS|BAND|INBOX|HEARD]   show that view of the app window (no name: the next one); the rows of the
+ *                                    INBOX / HEARD view are also printed on the DECODE screen; showing the INBOX
+ *                                    marks its messages as read
+ *   LOG <CALL>                       the exchange with CALL is complete: one ADIF record (the loader's ICAPQSO.ADI
+ *                                    through "@QLOG"; where the loader has none, a JS8Annnn.ADI segment) */
+static COLD void ui_cmd(const char *c)
+{
+    char l[8 + JS8F_ADIF_MAX + 4], *q;
+    if (c[0] == 'V') {
+        int v = (feat->k.view + 1) % JS8F_NVIEWS;
+        while (*c > ' ') c++;
+        if (*c == ' ') for (int i = 0; i < JS8F_NVIEWS; i++) if (js8f_view_name(i)[0] == c[1]) v = i;
+        feat->k.view = (uint8_t)v; snap_dirty = 1;
+#ifdef JS8_TX
+        txp_last[0] = 0;
+#endif
+        panel();
+        if (v >= JS8F_V_INBOX) {
+            uint32_t now = t_now();
+            for (int r = 0; r < 1 + JS8F_HEARD && js8f_row(feat, v, r, now, l); r++) if (l[0]) icap_decode_out(l);
+            if (v == JS8F_V_INBOX) js8f_read(feat);
+        }
+    } else if (c[0] == 'L') {
+        struct icap_time t;
+        struct icap_radio rs;
+        int n, fd, r = -1;
+        while (*c > ' ') c++;
+        while (*c == ' ') c++;
+        rs.freq_hz = 0; icap_radio_state(&rs);
+        if (icap_clock_now(&t) != 0) { t.year = 0; t.mon = t.day = t.hour = t.min = t.sec = 0; }
+        q = cat(l, "@QLOG ");
+        n = js8f_adif(feat, c, (uint32_t)t.year * 10000u + (uint32_t)t.mon * 100u + t.day, (t.hour * 60 + t.min) * 60 + t.sec, rs.freq_hz, mygrid, q);
+        if (!n) { icap_decode_out("LOG: not a call"); return; }
+        fd = icap_open(l, ICAP_O_READ);          /* opening it IS the request; the answer is "r=0" */
+        if (fd >= 0) { char a[8]; r = icap_read(fd, a, sizeof a); icap_close(fd); r = (r >= 3 && a[2] == '0') ? 0 : -1; }
+        if (r) {
+            int w, k = 0;
+            q[n] = '\r'; q[n + 1] = '\n';
+            do w = seg_write(&lg_adif, q, (uint32_t)n + 2u, 1); while (w < 0 && ++k < 8 && !stop());   /* (-1: still looking for a free number) */
+            r = w > 0 ? 0 : -1;
+        }
+        q = cat(l, r ? "LOG FAILED " : "LOGGED "); cat(q, c);   /* (the record is no longer needed) */
+        l[DEC_W] = 0;
+        icap_decode_out(l);
+    }
+}
+#endif
+#ifdef JS8_TX
+#include "js8app_kbd.h"                          /* a tap on a row opens the radio's keyboard; ENT sends */
+#endif
+#ifdef JS8_LINK
+#include "js8app_link.h"                         /* terminal link glue: what the radio says, what it does for a command */
+#endif
+
+#ifdef JS8_SHELL_THUMB
+/* The shell is built as Thumb code (shell/build.sh, the RX+TX+link flavour).  The SDK's start stub enters with an
+ * ARM "b app_main", and an ARM jump into Thumb code would need a linker veneer whose absolute address the loader
+ * does not relocate - so app_main stays a small ARM function that CALLS the Thumb main ("blx", PC-relative). */
+static int js8_main(const struct icap_svc *svc);
+__attribute__((target("arm"), optimize("no-optimize-sibling-calls"))) int app_main(const struct icap_svc *svc)
+{
+    volatile int r = js8_main(svc);              /* (volatile: keeps the call from becoming a jump) */
+    return r;
+}
+static __attribute__((noinline)) int js8_main(const struct icap_svc *svc)
+#else
 int app_main(const struct icap_svc *svc)
+#endif
 {
     icap_use(svc);
     static js8_result_t res[MAXOUT];
     char line[100], *q;
     char *hp = icap_heap(); uint32_t hlen = icap_heap_size();
-    uint32_t reserve = (((uint32_t)sizeof(js8asm_t) + 7u) & ~7u) + (((uint32_t)sizeof(js8jsc_t) + 7u) & ~7u)
-                     + JS8_HEAD_MAX + JS8_LOG_SZ + JS8_MSG_SZ + JS8_RDBLK;
+    /* the shell's part of the data region is a fixed JS8_RESERVE bytes (the pieces need a little less: the rest is
+     * spare), so that the decoder arena is the same on the radio and in the simulator */
+    typedef char reserve_fits[(((sizeof(js8asm_t) + 7u) & ~7u) + ((sizeof(js8jsc_t) + 7u) & ~7u) + JS8_HEAD_MAX + JS8_LOG_SZ + JS8_MSG_SZ + JS8_RDBLK
+                               + ((sizeof(js8feat_t) + 7u) & ~7u) <= JS8_RESERVE) ? 1 : -1];
+    typedef char reply_fits[JS8F_REPLY_ROW <= DEC_W - 6 ? 1 : -1];
+#ifdef JS8_LINK
+    /* the link's state lives in the spare end of the shell's part of the data region: the decoder arena stays as it is */
+    typedef char link_fits[(((sizeof(js8asm_t) + 7u) & ~7u) + ((sizeof(js8jsc_t) + 7u) & ~7u) + JS8_HEAD_MAX + JS8_LOG_SZ + JS8_MSG_SZ + JS8_RDBLK
+                            + ((sizeof(js8feat_t) + 7u) & ~7u) + ((sizeof(js8link_t) + 7u) & ~7u) <= JS8_RESERVE) ? 1 : -1];
+#endif
+    const uint32_t reserve = JS8_RESERVE;
     int ok = icap_audio_rate() == (int)FS && hp && !((uintptr_t)hp & 7u) && hlen >= reserve + JS8_WORK_MIN;
     int clock_warned = 0, last_key = -1, last_err = 0;
     uint32_t mono = 0;                           /* seconds, for the reassembly timeouts */
@@ -912,33 +1166,79 @@ int app_main(const struct icap_svc *svc)
         while (!stop()) icap_sleep_ms(200);
         return 1;
     }
-    read_cfg();
     js8_clock = app_clock;                       /* per-stage decode times in ms (js8_stats.t) */
     /* carve the data region (zeroed by the loader at launch) */
     asmb = (js8asm_t *)hp; hp += (sizeof(js8asm_t) + 7u) & ~7u;
     js8jsc_t *jc = (js8jsc_t *)hp; hp += (sizeof(js8jsc_t) + 7u) & ~7u;
     uint8_t *head = (uint8_t *)hp; hp += JS8_HEAD_MAX;
-    lg_frames.buf = hp; lg_frames.cap = JS8_LOG_SZ - LOG_HDR; hp += JS8_LOG_SZ;   /* file = header line + tail <= JS8_LOG_SZ */
-    lg_msgs.buf = hp; lg_msgs.cap = JS8_MSG_SZ - LOG_HDR; hp += JS8_MSG_SZ;
-    void *work = wk = hp; uint32_t wlen = wk_len = hlen - reserve;
-    rblk = (uint8_t *)hp + (wlen & ~7u);                /* the read block of the capture: the last JS8_RDBLK bytes */
+    lg_frames.buf = hp; lg_frames.cap = JS8_LOG_SZ - SEG_HDR - SEG_TRL; hp += JS8_LOG_SZ;   /* file = header + lines + trailer <= JS8_LOG_SZ */
+    lg_msgs.buf = hp; lg_msgs.cap = JS8_MSG_SZ - SEG_HDR - SEG_TRL; hp += JS8_MSG_SZ;
+    feat = (js8feat_t *)hp; hp += (sizeof(js8feat_t) + 7u) & ~7u;
+    rblk = (uint8_t *)hp; hp += JS8_RDBLK;       /* the read block of the capture (src_read) */
+#ifdef JS8_LINK
+    js8link_t *lk = (js8link_t *)hp; hp += (sizeof(js8link_t) + 7u) & ~7u;
+    (void)sizeof(link_fits);
+    js8link_init(lk, &lio, lk_ident); lnk = lk;  /* before read_cfg: it takes term= / term2= */
+#endif
+#ifdef DIGI_HOST
+    spare_p = hp; spare_n = (uint32_t)((char *)icap_heap() + reserve - hp);   /* the test bench checks that nothing writes here */
+#endif
+    void *work = wk = (char *)icap_heap() + reserve; uint32_t wlen = wk_len = hlen - reserve;
     arena_len = wlen;
+    (void)sizeof(reserve_fits); (void)sizeof(reply_fits);
+#ifdef JS8_TX
+    js8tx_init(&txq, &txio, mycall, 0, abuf);    /* before read_cfg: it takes the tx* keys */
+    if (!tx_available()) txq.dead = 1;
+    txq.prep = feat->prep; txq.prep_n = JS8F_PREP;
+    { typedef char prep_width[JS8F_REPLY + 1 == JS8TX_PREP_W ? 1 : -1]; (void)sizeof(prep_width); }   /* prepared replies: offered on the keyboard, sent only on the owner's ENT */
+#endif
+    read_cfg();
+#ifdef JS8_LINK
+    {
+        char *iq = cat(lk_ident, mycall[0] ? mycall : "-"); *iq++ = ' ';
+        iq = cat(iq, mygrid[0] ? mygrid : "-");
+#ifdef JS8_TX
+        cat(iq, " TX");
+#else
+        cat(iq, " RX");
+#endif
+    }
+#endif
 
     js8asm_init(asmb, mycall, cfg_groups[0] ? cfg_groups : 0, on_message, 0);
     /* the start-up loads read up to 34 KB (dictionary head) + 9 KB (log tails) from the card: every read polls
      * the stop request, and a stop during start-up leaves without touching any file */
     if (stop()) return 0;
-    jsc = js8jsc_init(jc, &jio, head, JS8_HEAD_MAX) == 0 ? jc : 0;
+    { int fd = icap_open("JSCHEAD.BIN", ICAP_O_READ | ICAP_O_ROOT); if (fd >= 0) { icap_close(fd); jsc_where = ICAP_O_ROOT; } }
+    int jrc = js8jsc_init(jc, &jio, head, JS8_HEAD_MAX);
+    jsc = jrc == 0 ? jc : 0;
     if (stop()) return 0;
-    log_load(&lg_frames);
+    snap_load(lg_frames.buf, JS8_LOG_SZ);        /* ring positions, heard table, inbox of the last run (the buffer is free now) */
     if (stop()) return 0;
-    log_load(&lg_msgs);
-    if (stop()) return 0;
+    js8f_init(feat, mycall);
+    feat->k.view = JS8F_V_STATUS;                /* always start on the STATUS view: that is where start-up errors show */
+#ifdef JS8_TX
+    txq.jsc = jsc;                               /* JSC compression for TX when the dictionary is on the card */
+#endif
     icap_clear();
     panel();
-    if (!jsc) note(MODE_NAME ": no dictionary (JSCHEAD.BIN)");
+    if (jrc == -5) note(MODE_NAME ": dictionary CORRUPT - not used");
+    else if (!jsc) note(MODE_NAME ": no dictionary (JSCHEAD.BIN)");
+    else if (!jsc->sums) note(MODE_NAME ": dictionary not checked (JSCSUM.BIN)");
+    if (jsc_where) note(MODE_NAME ": dictionary on the card root");
     if (!mycall[0]) note(MODE_NAME ": no call (@MYCALL / call=)");
     if (cfg_band_bad) note(MODE_NAME ": JS8.CFG band < 100 Hz, using 450-2550");
+    if (cfg_long) {                              /* keys after the read limit are not used: TX must not be more open than meant */
+#ifdef JS8_TX
+        txq.test = 1;
+        note("JS8.CFG: too long, rest ignored, TXTEST on");
+#else
+        note("JS8.CFG: too long, rest ignored");
+#endif
+    }
+#ifdef JS8_TX
+    kbd_start();                                 /* one row to tap */
+#endif
     icap_audio_read(abuf, 1);                    /* start the capture service */
     dec_reset();
 
@@ -947,6 +1247,10 @@ int app_main(const struct icap_svc *svc)
         if (open_err == 1) { note(MODE_NAME ": SD error - no capture file"); open_err = 2; }
         if (lost) { note(MODE_NAME ": a period was skipped"); n_skipped += (uint32_t)lost; lost = 0; }
         if (pending_note) { const char *pn = pending_note; pending_note = 0; note(pn); }
+        if (jsc && jsc->st_bad != dict_bad) { dict_bad = jsc->st_bad; note(MODE_NAME ": dictionary file corrupt, shown raw"); }
+#ifdef JS8_HOST_CMD
+        { const char *hc = JS8_HOST_CMD(); if (hc) ui_cmd(hc); }   /* test bench: an operator command without a tap */
+#endif
         if (cap.clock_bad && !clock_warned) { note(MODE_NAME ": radio clock not set"); clock_warned = 1; }
         int s = done[0].ready ? 0 : done[1].ready ? 1 : -1;
         if (s >= 0 && done[s ^ 1].ready) {      /* both waiting: decode the older one only if it is not stale */
@@ -955,7 +1259,24 @@ int app_main(const struct icap_svc *svc)
             note_at(done[s].hh, done[s].mm, done[s].ss, MODE_NAME ": skipped (decoder behind)");
             n_skipped++; done[s].ready = 0; s ^= 1;
         }
-        if (s < 0) { icap_sleep_ms(20); continue; }
+#ifdef JS8_TX
+        {   /* transmit when a confirmed message is due; do not start a decode that would be cut right away */
+            int due = txpoll();
+            tx_panel();
+            if (due == 0) { tx_slot(); continue; }
+            if (due > 0 && due < 4000) s = -1;
+        }
+        kbd_poll1(1);                            /* a tap on a row: the radio's keyboard */
+#endif
+#ifdef JS8_LINK
+        link_service();                          /* the terminal: bounded, and only when capture and TX leave the time */
+#endif
+        if (s < 0) {                             /* idle: write what must not wait for the end of a period (error notes, a marked
+                                                  * exchange), and the state file after it, so that the state is never more than
+                                                  * one segment behind the card */
+            log_tick(&lg_frames, 0); log_tick(&lg_msgs, 0); snap_tick();
+            icap_sleep_ms(20); continue;
+        }
         /* decode slot s while the next period is captured into the other slot */
         decoding = s; done[s].ready = 0;
         rd.slot = s; rd.len = done[s].n; rd.bn = 0;
@@ -964,10 +1285,16 @@ int app_main(const struct icap_svc *svc)
         float nom = done[s].nom;
         dsrc_t src = { 0, src_read, done[s].n, FS };
         timed_out = bud_cut = 0; t_pump = t_sd = 0;
+#ifdef JS8_TX
+        tx_cut = 0;
+#endif
         if (st_key != key) js8_stream_stop();    /* the rows in the arena are not this period's */
         uint32_t t0 = dec_t0 = icap_ticks();
         int nd = js8_decode(&src, cfg_flo, cfg_fhi, nom, res, MAXOUT, work, wlen, dec_abort);
         uint32_t ms = icap_ticks() - t0, sd_ms = t_sd, pump_ms = t_pump;
+#ifdef JS8_TX
+        if (tx_cut && !stop()) { decoding = -1; tx_slot(); }   /* first the transmission (no SD access before it), then the results */
+#endif
         if (rd.fd >= 0) { icap_close(rd.fd); rd.fd = -1; }
         int late = timed_out, cutn = late || bud_cut;   /* cut by the next capture / by budget=: both are reported */
         decoding = -1; st_key = -1;
@@ -983,6 +1310,9 @@ int app_main(const struct icap_svc *svc)
             else { q = cat(line, MODE_NAME ": audio gap "); q = num(q, gap_ms, 0, ' '); cat(q, " ms"); }
             note_at(hh, mm, ss, line);
         }
+#ifdef JS8_TX
+        if (tx_cut) { note_at(hh, mm, ss, MODE_NAME ": decode cut for TX"); if (nd == E_ABORT) nd = 0; }
+#endif
         if (nd < 0 && (nd != E_ABORT || cutn)) {
             q = cat(line, nd == E_ABORT ? MODE_NAME ": decode out of time" : nd == E_IO ? MODE_NAME ": SD read error" : MODE_NAME ": decoder error ");
             if (nd != E_ABORT && nd != E_IO) num(q, nd, 0, ' ');
@@ -992,22 +1322,58 @@ int app_main(const struct icap_svc *svc)
         } else if (nd >= 0) last_err = 0;
         /* results.  A compressed frame may need SD reads (dictionary) and a full log tail an archive write: the stop
          * request is checked before every frame and inside every dictionary read */
-        for (int i = 0; i < nd && i < MAXOUT && !stop(); i++) { on_frame(&res[i], mono); polite(); }
+        for (int i = 0; i < nd && i < MAXOUT && !stop(); i++) {
+            on_frame(&res[i], mono); polite();
+#ifdef JS8_TX
+            tx_service();
+#endif
+#ifdef JS8_LINK
+            link_service();
+#endif
+        }
         if (!quit) {
             js8asm_tick(asmb, mono);             /* close messages that timed out */
+            js8f_tick(feat, p_abs());            /* forget prepared replies nobody confirmed */
+#ifdef JS8_TX
+            js8tx_period(&txq);
+#endif
             if (nd > 0 && cutn) note_at(hh, mm, ss, MODE_NAME ": partial, decode out of time");
+            if (pop_tok >= POP_BURST) pop_refill = n_periods;
+            else if (n_periods - pop_refill >= POP_REFILL) { pop_tok++; pop_refill = n_periods; }
         }
-        log_flush(&lg_frames); log_flush(&lg_msgs);
+        log_tick(&lg_frames, 1); log_tick(&lg_msgs, 1); snap_tick();
+#ifdef JS8_TX
+        perf_add(key, nd, late ? 1 : bud_cut ? 2 : tx_cut ? 4 : 0, ms, icap_ticks() - t0 - ms, sd_ms, pump_ms);
+#else
         perf_add(key, nd, late ? 1 : bud_cut ? 2 : 0, ms, icap_ticks() - t0 - ms, sd_ms, pump_ms);
+#endif
         panel();
 #if JS8_PERF_FILE
+#ifdef JS8_TX
+        {   /* no SD work of ours right before a transmission: the file is written again after the next period */
+            int due = txpoll();
+            if (due >= 0 && due < 4000) continue;
+        }
+#endif
         if (cfg_perf && !stop()) perf_write();   /* the stop poll also keeps the SD calls between two polls bounded */
 #endif
     }
-    /* leave: the logs first (log_write keeps pumping audio, so the capture handle must still be valid - a closed
-     * handle number is given out again by the loader and audio would land in the log file), then the capture */
-    log_flush(&lg_frames); log_flush(&lg_msgs);
+#ifdef JS8_TX
+    js8tx_abort(&txq, MODE_NAME ": exit, TX queue cleared");   /* ends a granted transmission, clears the queue */
+#endif
+#ifdef JS8_TX
+    kbd_leave();                                 /* the radio's keyboard holds a callback into this app: close it, wait until it is gone */
+#endif
+    /* leave: messages still being received are closed and logged (flag 'e'), nothing is shown any more; then the
+     * logs (seg_write keeps pumping audio, so the capture handle must still be valid - a closed handle number is
+     * given out again by the loader and audio would land in the log file), the state, then the capture */
+    leaving = 1;
+    js8asm_tick(asmb, mono + 100000u);
+    log_flush_now(&lg_frames); log_flush_now(&lg_msgs); snap_dirty = 1; snap_save();   /* (snap_save: at once, whatever the last try did) */
     if (cap.fd >= 0) { icap_close(cap.fd); cap.fd = -1; }
     if (rd.fd >= 0) { icap_close(rd.fd); rd.fd = -1; }
+#ifdef JS8_LINK
+    js8link_flush(lnk); js8link_drop(lnk);
+#endif
     return 0;
 }

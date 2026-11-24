@@ -68,7 +68,10 @@ make test-full     # plus decoder statistics, kernel bench, profile, sanitizer a
 | `rv` | an independent Python model of the protocol against the C code |
 | `dec`, `t2` | builds the decoder bench; clean loopback sweep over frequency and time offset, must be 100 % |
 | `stream` | the streaming front end gives the same frames as the non-streamed decode |
-| `e2e` | the app in the loader simulator on generated scenarios: DECODE rows, pop-ups and log files are compared with what was sent. It checks that no source linked into the app names a transmit, network, remove, mode or radio-state service of the loader (a check of the source text, not of the binary). With an ARM compiler it also builds `JS8.APP` and checks its size and its symbols |
+| `e2e` | the receive-only app in the loader simulator on generated scenarios: DECODE rows, pop-ups and log files are compared with what was sent. It checks the sources: the loader's transmit services are called only in `shell/js8app_tx.h` (compiled into `FT8.APP` only), and no source calls a network service. With an ARM compiler it also builds `JS8.APP` and checks its size and its symbols |
+| `t7` | the transmit engine against a mock loader, plain and under ASan / UBSan: selection and timing of frames, tap credit, beacon and CQ arming, HB beacon, every loader error, the caps, the cancel and stop rules; the 79 tones of 1000 random frames against the Python model |
+| `txe2e` | the RX+TX app in the simulator: what it sends is decoded again by the receiver (loopback), slot timing, the safety cases (zero samples on the air when nothing may go out), both strategies, an accelerated 2-hour soak, ASan runs. With an ARM compiler it builds `JS8.APP` and `FT8.APP`, checks them against the 80 KiB window, checks that `JS8.APP` holds no transmit object or symbol, and that a second build is byte-identical |
+| `fixe2e` | the keyboard control at app level: the prefilled keyboard, the wait after the tap, tap credit and red frame, EXIT, the cancel, one waiting message, HB only on a fresh arming, the green frame, taps while armed, the dictionary on the card root |
 
 Without an ARM compiler the ARM part of `e2e` is skipped (`--skip-arm`) and the last line says "host only".
 
@@ -84,7 +87,7 @@ What the extra targets of `make test-full` judge and what they only print:
 
 So "make test-full: all passed" does not mean the sensitivity figures were compared with anything.
 
-On our machine (8 cores, shared with other jobs) `make test` took about 7 minutes and `make test-full` about 17 minutes. The suites use up to 8 processes. One scenario of `e2e` runs in real time and can fail its timing check on a heavily loaded machine; run it again before suspecting the code.
+On our machine (8 cores, shared with other jobs) `make test` took about 15 minutes (0.1.0, receive only: 7 minutes; `make test-full` of 0.1.0: 17 minutes). The suites use up to 8 processes. One scenario of `e2e` runs in real time and can fail its timing check on a heavily loaded machine; run it again before suspecting the code.
 
 ### Tests that need recordings
 
@@ -100,37 +103,39 @@ runs them through the decoder bench (`build/real/<name>.txt`) and through the st
 
 If the directory also holds an `expected.json`, the end-to-end comparison in the simulator (part (b) of `tests/e2e.py`) runs as well. That part was written for our private set of 19 recordings and refers to some of its file names; the scripts that produced our `expected.json` describe those recordings and are not part of this release. Read `run_real()` in `tests/e2e.py` for the format; with a different set expect to adapt it.
 
-## The app for the radio
+## The apps for the radio
 
 ```
-make arm ICAP_SDK=/path/to/icap-sdk CROSS=/path/to/toolchain/bin/arm-none-eabi-
+make arm-all ICAP_SDK=/path/to/icap-sdk CROSS=/path/to/toolchain/bin/arm-none-eabi-
 ```
 
-writes `build/arm/JS8.APP` (59,344 bytes with Arm GNU Toolchain 12.2.rel1 and the pinned SDK commit) and prints the section sizes. Build variants are described at the top of `shell/build.sh` (`OPT_MSG`, `OPT_APP`, `DEFS=-DJS8_PERF_FILE=0`); only the default build has run on a radio.
+writes `build/arm/FT8.APP` (receive + transmit, `FLAVOUR=tx sh shell/build.sh`, 75,240 bytes) and `build/arm/JS8.APP` (receive only, `sh shell/build.sh`, 66,140 bytes), with Arm GNU Toolchain 12.2.rel1 and the pinned SDK commit, and prints the section sizes. `make arm-tx` and `make arm` build one of them. In `FT8.APP` the shell and the cold modules are Thumb code (otherwise it does not fit the loader's 80 KiB window); the build fails if the linker inserts an interworking veneer, whose absolute address the loader would not relocate (see the top of `shell/build.sh`).
+
+**Build id.** `FT8.APP` shows a build id at the end of line 0 of its app window. By default `shell/build.sh` sets it to `a65e`, the commit of the development tree this release was exported from; with that id the two files built here are byte-identical to the ones built there. When you build changed sources, set your own: `JS8_BUILD_ID=my1 make arm-tx` (letters, digits, `+` and `-`).
 
 ```
 make dist
 ```
 
-needs the ARM toolchain as well (it builds the app) and assembles the SD-card file set in `build/dist/`: `IC-705/Apps/` with `JS8.APP`, the 257 receive dictionary files and the sample `JS8.CFG`; `presets/`; checksums; a `README.txt` with the licence and source statement; `LICENSE`, `NOTICE.md`, `AUTHORS.md`, `CREDITS.md`; and the same as `build/icap-js8-sdcard.zip`. Installing it is described in the README.
+needs the ARM toolchain as well (it builds both apps) and assembles the SD-card file set in `build/dist/`, laid out like the card: the 515 dictionary files `JSC*.BIN` for the card root, `IC-705/Apps/` with `FT8.APP` and the sample `JS8.CFG`, `receive-only/JS8.APP`, `presets/`, checksums, a `README.txt` with the licence and source statement, `LICENSE`, `NOTICE.md`, `AUTHORS.md`, `CREDITS.md`; and the same as `build/icap-js8-sdcard.zip`. Installing it is described in the README.
 
 If you pass the dictionary files or the app on to somebody else, the GPL applies to them: see `NOTICE.md`, section 2.3.
 
 ## What was verified, and what was not
 
-Verified for this release, on one machine (Debian 13, x86-64, gcc 14.2, GNU Make 4.4.1, Python 3.13):
+Verified for release 0.2.0 on 24 November 2026, on one machine (Debian 13, x86-64, gcc 14.2, GNU Make 4.4.1, Python 3.13), from a fresh `git clone` of this repository with an empty environment (`env -i`), the SDK and the JS8Call reference files given by `ICAP_SDK` and `JS8_REF`, and no recording present:
 
-- from a fresh copy of this tree, with the SDK and the reference files given by `ICAP_SDK` and `JS8_REF`, `make test` and `make test-full` passed without any recording present;
-- `make arm` from that copy produced a `JS8.APP` byte-identical to the one that ran on the radio;
-- `make dist` from that copy wrote the SD-card set (259 files in `IC-705/Apps`) and the archive;
-- without an ARM compiler, `make e2e` skipped the ARM part and passed;
-- with our private set of 19 recordings given by `RECORDINGS` (they are not shipped), `make test-recordings` passed: 136 frames, 380 streaming comparisons identical, all checks of the end-to-end suite;
-- `make fetch` over the network, once, on 23 November 2026, from a second fresh copy: the SDK clone at the pinned commit (then still the head of the SDK repository) and the seven files with matching checksums; `make test`, `make arm` and `make dist` from that copy passed and `JS8.APP` was byte-identical.
+- `make test` passed (receive and transmit suites);
+- `make arm-all` produced `FT8.APP` and `JS8.APP` byte-identical to the files built from the development tree at the commit the release was exported from (build id `a65e`), the files whose builds ran on the radio;
+- `make dist` wrote the SD-card set (515 dictionary files, both apps) and the archive.
+
+From release 0.1.0 (receive side, not repeated for 0.2.0): `make test-full`, `make test-recordings` with our private set of 19 recordings, `make e2e` without an ARM compiler, and `make fetch` over the network once.
 
 **Not verified:**
 
 - a build on any other machine, operating system or compiler; clang; macOS; Windows;
-- any toolchain other than Arm GNU Toolchain 12.2.rel1 for the ARM build.
+- any toolchain other than Arm GNU Toolchain 12.2.rel1 for the ARM build;
+- `make test-full` and `make fetch` over the network for 0.2.0.
 
 ## Other targets
 

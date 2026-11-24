@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tomas Brincil OK1BT. Written by Claude (Anthropic) under his direction; see AUTHORS.md.
 #
-# mkdist.sh - assemble the file set for the radio's SD card ("make dist").
-#   $BUILD/dist/IC-705/Apps/JS8.APP          the receiver app (RX only: no transmit and no network code)
-#   $BUILD/dist/IC-705/Apps/JSCHEAD.BIN, JSCD000.BIN .. JSCD0FF.BIN
-#                                            the receive dictionary (257 files), generated from JS8Call's word list
-#   $BUILD/dist/IC-705/Apps/JS8.CFG          sample configuration (the app runs without it)
-#   $BUILD/dist/presets/{DEFAULT,FAST,DEEP}.CFG   copy one over JS8.CFG to use it
+# mkdist.sh - assemble the file set for the radio's SD card ("make dist").  Its layout is the card's:
+#   $BUILD/dist/JSC*.BIN                     the dictionary (515 files) for the card ROOT, generated from JS8Call's word
+#                                            list: JSCHEAD.BIN + JSCD000..0FF (receive), JSCES.BIN + JSCE000..0FF
+#                                            (transmitting free text), JSCSUM.BIN (checksums of them all)
+#   $BUILD/dist/IC-705/Apps/FT8.APP          the app, receive + transmit (it must have this file name, see README.md)
+#   $BUILD/dist/IC-705/Apps/JS8.CFG          sample configuration (transmit off until you set tx=1)
+#   $BUILD/dist/receive-only/JS8.APP         the receive-only build (no transmit code), instead of or beside FT8.APP
+#   $BUILD/dist/presets/{DEFAULT,FAST,DEEP}.CFG   decoder presets
 #   $BUILD/dist/SHA256SUMS, README.txt, the licence files of this repository
 #   $BUILD/icap-js8-sdcard.zip               the same as one archive
 set -eu
@@ -17,13 +19,17 @@ D=$BUILD/dist
 A=$D/IC-705/Apps
 PYTHON=${PYTHON:-python3}
 if command -v sha256sum > /dev/null 2>&1; then SHA256=sha256sum; else SHA256="shasum -a 256"; fi
-[ -f "$BUILD/sd/JSCHEAD.BIN" ] || $PYTHON -I -B tools/mkjsc.py --out "$BUILD/sd"
+[ -f "$BUILD/sd/JSCSUM.BIN" ] || $PYTHON -I -B tools/mkjsc.py --out "$BUILD/sd"
 mkdir -p "$BUILD"
 OUT=$BUILD/arm sh shell/build.sh > "$BUILD/dist-build.log" 2>&1 || { cat "$BUILD/dist-build.log"; exit 1; }
+FLAVOUR=tx OUT=$BUILD/arm sh shell/build.sh >> "$BUILD/dist-build.log" 2>&1 || { cat "$BUILD/dist-build.log"; exit 1; }
 rm -rf "$D" "$BUILD/icap-js8-sdcard.zip"
-mkdir -p "$A" "$D/presets"
-cp "$BUILD/arm/JS8.APP" "$A/"
-cp "$BUILD/sd/JSCHEAD.BIN" "$BUILD"/sd/JSCD*.BIN "$A/"
+mkdir -p "$A" "$D/presets" "$D/receive-only"
+cp "$BUILD/arm/FT8.APP" "$A/"
+cp "$BUILD/arm/JS8.APP" "$D/receive-only/"
+cp "$BUILD"/sd/JSC*.BIN "$D/"
+n=$(ls "$D"/JSC*.BIN | wc -l)
+[ "$n" -eq 515 ] || { echo "mkdist.sh: $n dictionary files in $BUILD/sd, expected 515" >&2; exit 1; }
 cp sd/JS8.CFG "$A/"
 cp sd/presets/*.CFG "$D/presets/"
 for f in LICENSE NOTICE.md AUTHORS.md CREDITS.md; do [ ! -f "$f" ] || cp "$f" "$D/"; done
@@ -31,18 +37,19 @@ for f in LICENSE NOTICE.md AUTHORS.md CREDITS.md; do [ ! -f "$f" ] || cp "$f" "$
 REV="not recorded (the sources were not a git checkout)"
 if [ -e .git ] && command -v git > /dev/null 2>&1; then REV=$(git rev-parse HEAD 2> /dev/null || echo "$REV"); fi
 cat > "$D/README.txt" <<EOT
-JS8 receiver app for the Icom IC-705 running the ICAP loader of the custom firmware by Dawid SQ6EMM.
+JS8 app for the Icom IC-705 running the ICAP loader of the custom firmware by Dawid SQ6EMM
+(receive, and transmit with the radio's own keyboard: 705J 1.40 with SQ6EMM v14 J only).
 
-Copy the CONTENT of IC-705/Apps/ into the folder IC-705/Apps/ of the radio's SD card (card reader).
-JS8.CFG is optional.  presets/ holds three decoder presets: copy one to the card as JS8.CFG to use it
-(keep the line scope=450-2550 if you want the mini-scope span set).
+Copy the CONTENT of this folder to the ROOT of the radio's SD card (card reader):
+  JSC*.BIN (515 files)  -> card root                 the dictionary; NOT into IC-705/Apps
+  IC-705/Apps/FT8.APP    -> IC-705/Apps/FT8.APP       FIRST move the original FT8.APP (and any FT8.CFG) off the card
+  IC-705/Apps/JS8.CFG    -> IC-705/Apps/JS8.CFG       set your call / locator and tx=1 to transmit
+receive-only/JS8.APP is the receive-only build (no transmit code); put it into IC-705/Apps/ instead of
+or beside FT8.APP.  presets/ holds three decoder presets (copy the keys into JS8.CFG).
+How to operate, the safety rule and the limits: README.md of the source repository.
 
-JS8.APP is the receive-only build: it contains no transmit and no network code.
-The JSC*.BIN files are the JS8Call dictionary for receiving; without them the app still runs and
-shows compressed frames raw.
-
-Licence.  JS8.APP: GNU General Public License, version 3 (file LICENSE; which licence applies to which
-source file, and the notices of the MIT-licensed code it derives from: NOTICE.md).  The JSC*.BIN
+Licence.  FT8.APP and JS8.APP: GNU General Public License, version 3 (file LICENSE; which licence applies
+to which source file, and the notices of the MIT-licensed code it derives from: NOTICE.md).  The JSC*.BIN
 files are derived data of JS8Call's jsc_list.cpp, (C) 2018 Jordan Sherer KN4CRD, GPL-3.0-or-later.
 Who wrote what: AUTHORS.md (the code was written by an AI coding assistant under the direction of
 Tomas Brincil OK1BT).  Whose work it builds on: CREDITS.md.  No warranty.
@@ -52,8 +59,7 @@ The dictionary was generated by tools/mkjsc.py of that tree from jsc_list.cpp of
 commit a7ff1be0b389d287fdc56e2ea0d06962aa68127d.  Whoever passes this set on must make those sources
 available with it (GPL version 3, section 6; NOTICE.md, section 2.3).
 EOT
-( cd "$D" && find IC-705 presets -type f | LC_ALL=C sort | xargs $SHA256 > SHA256SUMS )
+( cd "$D" && find . -type f -not -name SHA256SUMS -not -name README.txt | sed 's|^\./||' | LC_ALL=C sort | xargs $SHA256 > SHA256SUMS )
 ( cd "$D" && $PYTHON -I -c 'import shutil,sys; shutil.make_archive(sys.argv[1], "zip", ".")' "$BUILD/icap-js8-sdcard" )
-n=$(ls "$A" | wc -l)
-echo "dist: $n files in $A ($(du -sh "$A" | cut -f1)), archive $BUILD/icap-js8-sdcard.zip"
-ls -l "$A/JS8.APP"
+echo "dist: $n dictionary files, FT8.APP, receive-only/JS8.APP in $D ($(du -sh "$D" | cut -f1)), archive $BUILD/icap-js8-sdcard.zip"
+ls -l "$A/FT8.APP" "$D/receive-only/JS8.APP"

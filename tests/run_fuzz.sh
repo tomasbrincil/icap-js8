@@ -25,16 +25,16 @@ mkdir -p "$OUT"
 ${CC:-cc} -std=c99 -D_POSIX_C_SOURCE=200809L $SAN tests/fuzz_core.c src/js8msg.c src/js8jsc.c src/js8asm.c -o "$OUT/fuzz_core" || exit 2
 ${CC:-cc} -std=gnu99 $SAN -fsanitize=float-cast-overflow -fno-math-errno -I"$SDK/apps/digi-common" -Isrc tests/fuzz_dec.c src/js8dec.c $CORE shell/digi_util.c -lm -o "$OUT/fuzz_dec" || exit 2
 ${CC:-cc} -std=gnu99 -O2 -Wall -Wextra -fno-math-errno -I"$SDK/apps/digi-common" -Isrc tests/fuzz_dec.c src/js8dec.c $CORE shell/digi_util.c -lm -o "$OUT/fuzz_dec_o2" || exit 2
-${CC:-cc} -std=gnu99 $SAN -fno-math-errno -DDIGI_HOST -I"$SDK" -Ishell -Isrc tests/fuzz_shell.c src/js8dec.c src/js8msg.c src/js8jsc.c src/js8asm.c src/js8pack.c $CORE shell/digi_util.c -lm -o "$OUT/fuzz_shell" || exit 2
+${CC:-cc} -std=gnu99 $SAN -fno-math-errno -DDIGI_HOST -I"$SDK" -Ishell -Isrc tests/fuzz_shell.c src/js8dec.c src/js8msg.c src/js8jsc.c src/js8asm.c src/js8feat.c src/js8pack.c $CORE shell/digi_util.c -lm -o "$OUT/fuzz_shell" || exit 2
 # the same with unsigned plain char, as on ARM
-${CC:-cc} -std=gnu99 $SAN -funsigned-char -fno-math-errno -DDIGI_HOST -I"$SDK" -Ishell -Isrc tests/fuzz_shell.c src/js8dec.c src/js8msg.c src/js8jsc.c src/js8asm.c src/js8pack.c $CORE shell/digi_util.c -lm -o "$OUT/fuzz_shell_uc" || exit 2
+${CC:-cc} -std=gnu99 $SAN -funsigned-char -fno-math-errno -DDIGI_HOST -I"$SDK" -Ishell -Isrc tests/fuzz_shell.c src/js8dec.c src/js8msg.c src/js8jsc.c src/js8asm.c src/js8feat.c src/js8pack.c $CORE shell/digi_util.c -lm -o "$OUT/fuzz_shell_uc" || exit 2
 
 cd "$OUT" || exit 2
 rm -f fz_*.log fz_status
 run() { name=$1; shift; ( nice "$@" > "fz_$name.log" 2>&1; rc=$?; echo "$rc $name: $(tail -1 "fz_$name.log" | cut -c1-200)"; echo "$rc $name" >> fz_status ) & }
 for s in 1 2 3; do run core$s ./fuzz_core "$SD" $((400000 * N)) $s; done
 for s in 1 2 3 4; do run dec$s ./fuzz_dec $((150 * N)) $s; done
-for dm in 0 1 2; do run frames$dm ./fuzz_shell frames "$SD" $((50000 * N)) $dm $dm; done
+for dm in 0 1 2 3; do run frames$dm ./fuzz_shell frames "$SD" $((50000 * N)) $dm $dm; done
 run frames_uc ./fuzz_shell_uc frames "$SD" $((30000 * N)) 9 2
 for fl in 0 1 2 4 8 16 31; do run app$fl ./fuzz_shell app "$SD" "$MIX" 60 $fl $fl; done
 run app_slow env COST=0.03 ./fuzz_shell app "$SD" "$MIX" 40 5 0
@@ -48,7 +48,7 @@ one hostile45 env ASAN_OPTIONS=detect_leaks=0 COST=0.0005 ./fuzz_shell app "$SD"
 rm -f "$OUT/hostile45.wav"
 echo "--- abort-poll latency of the decoder (x86 CPU time)"
 ./fuzz_dec_o2 poll
-echo "--- regression: log write fails in the last period, stop during a capture (audio used to land in JS8LOG.TXT)"
+echo "--- regression: log write fails in the last period, stop during a capture (audio used to land in the log file)"
 one exit_stale_fd env END_MS=67000 FAILLOG=61000,65000 COST=0.01 ./fuzz_shell app "$SD" "$MIX" 5 1 0; grep "FAIL\|fuzz_shell:" fz_exit_stale_fd.log
 echo "--- regression: stop requested at many different moments (start-up loads, capture, decode, results, log write)"
 rc=0; for e in 3 40 200 900 1500 14990 15020 15400 16000 29900 30100 31000 45200 60500; do

@@ -146,6 +146,14 @@ static void finish(js8asm_t *a, js8asm_stream_t *s, int timeout)
             }
         }
     }
+    /* 24 Nov 2026 on the radio: a MSG whose checksum did not verify showed its 3 checksum characters ("... SCOTLAND. ZG1").
+     * The flag stays (log 'x', DECODE marker '?'); the checksum-looking tail is taken off the text. */
+    if ((m->flags & JS8ASM_F_CRC_BAD) && n >= 5 && m->text[n - 4] == ' ') {
+        static const char ab[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?";
+        int ok = 1, j, k;
+        for (j = n - 3; j < n && ok; j++) { for (k = 0; ab[k] && ab[k] != m->text[j]; k++) ; ok = ab[k] != 0; }
+        if (ok) { n -= 4; m->text[n] = 0; }
+    }
     /* printable from here on (the checksum above is over the text as sent) */
     for (i = 0; i < n; i++) {
         unsigned char ch = (unsigned char)m->text[i];

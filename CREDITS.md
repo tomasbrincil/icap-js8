@@ -46,6 +46,12 @@ belief-propagation decoder in the SDK's FT8 decoder, and therefore in ours, are
 adapted from it.
 <https://github.com/kgoba/ft8_lib>
 
+**BI1BIF** - found the entry points of the IC-705's own on-screen keyboard in the
+stock firmware and published his analysis and an emulator of the radio. Writing a
+message on the radio itself, the heart of release 0.2.0, rests on that work: the app
+calls the three functions he identified (`shell/js8app_kbd.h`, `NOTICE.md` section 2.1a).
+<https://github.com/BI1BIF/IC-705-Firmware>
+
 ## Test recordings (used for testing, not redistributed)
 
 The receiver was tested against recordings made and published by others. They are
@@ -67,7 +73,8 @@ only where the source itself states them.
 **OK1HRA** (WIFILT) - inspiration.
 
 **The amateur radio operators on 7.078 MHz** whose JS8 transmissions were the first
-signals this app decoded on a real radio, on 23 November 2026.
+signals this app decoded on a real radio, on 23 November 2026, and who answered its
+first heartbeats on 23 and 24 November 2026.
 
 ## Who wrote this project
 

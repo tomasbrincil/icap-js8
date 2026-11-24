@@ -20,11 +20,19 @@
 #                 u8 maxlen, u8 0; then head_n x [len u8][chars]
 #   JSCDxxx.BIN   decode buckets, xxx = hex(index / per_file):
 #                 "JD", u16 fileno, u16 count, u16 payload; count x [len][chars]
-#   JSCExxx.BIN   encode buckets (text -> index; used by the host test tools only), xxx = hex(hash(first 3 chars) % enc_files),
+#   JSCExxx.BIN   encode buckets (text -> index; the transmit path of FT8.APP), xxx = hex(hash(first 3 chars) % enc_files),
 #                 words of 3+ chars in JSC::list order (longest prefix first):
 #                 "JE", u16 fileno, u32 payload; n x [len][chars][u24 v]
 #                 v = index | (len - advance) << 18
 #   JSCES.BIN     same entry format, all candidate words of 1..2 chars
+#   JSCSUM.BIN    checksums of all the files above, so that the radio can tell a
+#                 corrupt file from a good one (it then shows the frame raw):
+#                 "JSCS", u16 n; n x u16 CRC of one whole file, in the order
+#                 JSCHEAD, JSCD000 .. (nd files), JSCES, JSCE000 .. (enc_files);
+#                 u16 (BIG endian) CRC of everything before it, so that the CRC
+#                 over the whole file is 0.  CRC-16/CCITT-FALSE (poly 0x1021,
+#                 init 0xFFFF), the same as js8_crc16() in src/js8jsc.c.
+#                 --sum-only writes just this file for the files already in --out.
 #
 # Decoding honours the `size` field of JSC::map like JS8Call-improved does
 # (index 81 -> "@ALLCAL", index 262143 -> "R").  All integers little endian.
@@ -81,6 +89,28 @@ def parse(path):
     return secs
 
 
+def crc16(b, crc=0xFFFF):
+    for c in b:
+        crc ^= c << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021 if crc & 0x8000 else crc << 1) & 0xFFFF
+    return crc
+
+
+def write_sums(out):
+    """JSCSUM.BIN for the dictionary files found in `out` (their header says how many there are)"""
+    h = open(os.path.join(out, "JSCHEAD.BIN"), "rb").read(16)
+    total, per_file, enc_files = struct.unpack("<IHH", h[4:12])
+    nd = (total + per_file - 1) // per_file
+    names = ["JSCHEAD.BIN"] + ["JSCD%03X.BIN" % k for k in range(nd)] + ["JSCES.BIN"] + ["JSCE%03X.BIN" % k for k in range(enc_files)]
+    d = b"JSCS" + struct.pack("<H", len(names))
+    for n in names:
+        d += struct.pack("<H", crc16(open(os.path.join(out, n), "rb").read()))
+    d += struct.pack(">H", crc16(d))          # big endian: the CRC over the whole file is then 0
+    open(os.path.join(out, "JSCSUM.BIN"), "wb").write(d)
+    print("  JSCSUM.BIN   %d checksums, %d B" % (len(names), len(d)))
+
+
 def jsc_hash(s, n):
     return ((s[0] * 31 + s[1]) * 31 + s[2]) % n
 
@@ -99,7 +129,11 @@ def main():
     ap.add_argument("--enc-files", type=int, default=256)
     ap.add_argument("--head", type=int, default=5740)
     ap.add_argument("--stats", action="store_true", help="print the bucket size comparison")
+    ap.add_argument("--sum-only", action="store_true", help="only (re)write JSCSUM.BIN for the files already in --out")
     a = ap.parse_args()
+    if a.sum_only:
+        write_sums(a.out)
+        return
 
     if not os.path.exists(a.list):
         os.makedirs(os.path.dirname(a.list), exist_ok=True)
@@ -176,7 +210,7 @@ def main():
 
     os.makedirs(a.out, exist_ok=True)
     for f in os.listdir(a.out):
-        if re.fullmatch(r"JSC(HEAD|ES|[DE][0-9A-F]{3})\.BIN", f):
+        if re.fullmatch(r"JSC(HEAD|ES|SUM|[DE][0-9A-F]{3})\.BIN", f):
             os.remove(os.path.join(a.out, f))
 
     def ent(w):
@@ -235,6 +269,7 @@ def main():
               % (name, len(v), sum(v), max(v), sum(v) // len(v), min(v)))
     print("  all files: %d, %d bytes; head %d entries (%d B of RAM if fully loaded)"
           % (sum(len(v) for v in sizes.values()), tot, head_n, sizes["HEAD"][0] - 16))
+    write_sums(a.out)
 
 
 if __name__ == "__main__":

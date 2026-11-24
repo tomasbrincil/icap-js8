@@ -3,11 +3,11 @@
 This file states which licence applies to what in this repository, and reproduces
 the copyright notices and licence texts that must travel with the code.
 It was compiled on 2026-11-23 from the upstream LICENSE/COPYING files and source
-headers named below. It is a careful reading by non-lawyers, not legal advice.
+headers named below, and updated on 2026-11-24 for release 0.2.0 (transmit). It is a careful reading by non-lawyers, not legal advice.
 
 ## 1. Licence of this project
 
-- The project as a whole, and every binary built from it (`JS8.APP`), is
+- The project as a whole, and every binary built from it (`JS8.APP`, `FT8.APP`), is
   distributed under the **GNU General Public License, version 3** - full text in
   [`LICENSE`](LICENSE).
 - The files written for this project carry `SPDX-License-Identifier: GPL-3.0-or-later`:
@@ -52,11 +52,26 @@ Copyright (c) 2026 Dawid SQ6EMM.
 | `shell/js8app.c` | capture state machine, SD sample source and abort poll copied from `apps/digi-common/digiapp.c`; the two-slot scheduling (a finished capture is decoded while the next one is recorded) follows `apps/wspr/wsprapp.c` | GPL-3.0-or-later (SPDX headers of both files) |
 | `shell/digi_util.c`, `shell/digi_util.h` | unmodified copies of `apps/digi-common/digi_util.c/.h` | GPL-3.0-or-later (SPDX header) |
 | (not copied; compiled from an SDK checkout) `icap.h` | SDK root | MIT (header: "Copyright (c) 2026 Dawid SQ6EMM. SPDX-License-Identifier: MIT") |
+| (not copied; compiled from an SDK checkout into `FT8.APP`, the transmit build) `apps/digi-common/txsynth.c`, `txsynth.h` - the FSK audio synthesizer | MIT (SPDX header of `txsynth.c`; no copyright line in the file, the SDK's MIT notice in section 3 is kept for it) |
 | (not copied; linked into every `.APP`) `tools/icap_start.S`, `tools/app.ld`; packer `tools/mkapp.py` | SDK `tools/` | `mkapp.py` states "MIT license (see LICENSE)"; `icap_start.S` and `app.ld` carry no licence line - we treat them as MIT like the rest of the SDK (not confirmed by the author) |
 | (not copied; compiled from an SDK checkout into the PC reference bench `tests/ft8ref.c` only, never into the app) the SDK's FT8 app `apps/ft8/**`, `apps/digi-common/**` | SDK | GPL-3.0-or-later as a whole, with MIT parts (see below) |
 
 The SDK's FT8 app as a whole and `apps/digi-common/` as a whole are
 GPL-3.0-or-later (`apps/ft8/README.md`, `apps/digi-common/README.md`).
+
+### 2.1a Firmware addresses of the radio's keyboard - found by BI1BIF
+
+`shell/js8app_kbd.h` (compiled into `FT8.APP` only) opens the radio's own on-screen
+keyboard by calling three functions of the IC-705 firmware at fixed addresses: the
+Japanese stock firmware 1.40 ("705J 1.40") and the custom firmware 20261119v14 J by
+Dawid SQ6EMM, which has the same code there. The entry points
+were found by BI1BIF, whose analysis and emulator are published at
+<https://github.com/BI1BIF/IC-705-Firmware>; no code of that project is copied here.
+To refuse any other firmware, the source holds, for each of the three functions, its
+address and its first four instruction words as they are in that firmware image
+(12 words, 48 bytes), and compares them with the radio's memory before any call.
+These values are facts about the firmware that are needed to interoperate with it;
+nothing else of the firmware is contained in this repository.
 
 ### 2.2 ft8_lib - Karlis Goba YL3JG
 
@@ -186,7 +201,9 @@ SOFTWARE.
 
 ## 4. Not included in this repository
 
-- **No Icom code.** Nothing here is, contains or is derived from Icom firmware.
+- **No Icom code.** Nothing here is, contains or is derived from Icom firmware,
+  except the three addresses and twelve instruction words of section 2.1a, which are
+  only compared, never executed from this repository.
   "Icom" and "IC-705" are trademarks of Icom Inc.; this project is independent and
   not affiliated with or endorsed by Icom.
 - **No custom firmware.** The ICAP loader the app runs under is part of the custom
@@ -195,10 +212,11 @@ SOFTWARE.
 - **No test recordings.** The receiver was tested with recordings made by others.
   They are not redistributed; see [`CREDITS.md`](CREDITS.md) for where they come
   from and under which terms.
-- **No dictionary files and no binaries.** `JS8.APP` and the `JSC*.BIN` files are
+- **No dictionary files and no binaries.** `JS8.APP`, `FT8.APP` and the `JSC*.BIN` files are
   build products (see section 2.3 for what applies when you distribute them).
-- **No transmit code.** This release is a receiver. The app contains no call to the
-  loader's transmit or network services.
+- **No terminal link.** The terminal link of the development tree (a network
+  connection to an external keyboard and display) and its firmware are not part of
+  this release; the apps built here contain no call to the loader's network services.
 
 JS8Call, WSJT-X and the other names are used only to say what
 this software is compatible with or built on. None of the projects named in this

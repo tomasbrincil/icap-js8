@@ -82,7 +82,7 @@ A frame is reported only when the CRC matches. In the simulator this gave no fal
 
 ## 7. The encoder in this repository
 
-`src/js8enc.c` (frame to 79 tones) is linked into the app because the decoder needs it: a decoded frame is re-encoded to subtract its signal and to measure its SNR. `src/js8pack.c` (text to frames) is **not** part of the app; together with `tests/js8gen.c` it is the **test signal generator** that writes WAV files for the tests. Nothing in this repository sends audio to a transmitter.
+`src/js8enc.c` (frame to 79 tones) is linked into the app because the decoder needs it: a decoded frame is re-encoded to subtract its signal and to measure its SNR. `src/js8pack.c` (text to frames, Huffman and dictionary compression as JS8Call's frame builder) is part of the transmit app `FT8.APP`, not of the receive-only `JS8.APP`; together with `tests/js8gen.c` it is also the **test signal generator** that writes WAV files for the tests. In `FT8.APP`, `src/js8tx.c` turns the frames into 79 tones and the SDK's `txsynth.c` into audio for the loader (continuous-phase FSK, as JS8Call sends); `tests/tx_e2e.py` decodes that audio again with the receiver.
 
 ## 8. Checks against JS8Call
 

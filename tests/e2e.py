@@ -24,6 +24,9 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import js8seg                          # reader / checker of the segment files (tests/js8seg.py)
+
 HOME = os.path.expanduser('~')
 SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CC = (os.environ.get('CC') or 'cc').split()      # host compiler, as the Makefile
@@ -52,7 +55,7 @@ def sh(cmd, **kw):
 
 def build():
     cf = CC + ['-std=gnu99', '-O2', '-Wall', '-Wextra', '-Wshadow', '-fno-math-errno']
-    core = ['src/js8dec.c', 'src/js8msg.c', 'src/js8jsc.c', 'src/js8asm.c', 'src/js8_constants.c', 'src/js8crc.c', 'src/js8enc.c', 'shell/digi_util.c']
+    core = ['src/js8dec.c', 'src/js8msg.c', 'src/js8jsc.c', 'src/js8asm.c', 'src/js8feat.c', 'src/js8_constants.c', 'src/js8crc.c', 'src/js8enc.c', 'shell/digi_util.c']
     r = sh(cf + ['-DDIGI_HOST', '-I' + SDK, '-Ishell', '-Isrc', 'tests/js8sim.c'] + core + ['-lm', '-o', SIM], cwd=SRC)
     check('build js8sim (shell/js8app.c + decoder + message layer, host)', r.returncode == 0 and not r.stdout.strip(),
           'no warnings' if not r.stdout.strip() else r.stdout[:300])
@@ -173,18 +176,14 @@ class Sim:
                 if m:
                     self.stat['dec.last'], self.stat['dec.avg'], self.stat['dec.max'] = map(int, m.groups())
 
+    # Since the storage rework (shell/js8app_store.h) there is no JS8LOG.TXT / JS8MSG.TXT any more: each log is a row
+    # of segment files JS8Lnnnn.TXT / JS8Mnnnn.TXT written once.  'JS8LOG.TXT' / 'JS8MSG.TXT' below name the STREAM:
+    # its lines are those of all its segments in sequence order, without the header / trailer line of each segment.
     def lines(self, name):
-        p = os.path.join(self.dir, name)
-        if not os.path.exists(p):
-            return []
-        return [x for x in open(p, 'rb').read().decode('ascii', 'replace').split('\r\n') if x]
+        return js8seg.lines(self.dir, {'JS8LOG.TXT': 'JS8L', 'JS8MSG.TXT': 'JS8M'}[name])
 
     def logfiles(self, pfx, main):
-        names = sorted(f for f in os.listdir(self.dir) if re.match('^' + pfx + r'\d{4}\.TXT$', f)) + [main]
-        out = []
-        for nm in names:
-            out += self.lines(nm)
-        return names, out
+        return [x.name for x in js8seg.stream(self.dir, pfx)], js8seg.lines(self.dir, pfx)
 
     def rlines(self):
         """R lines of the frame log (archives first): list of dict(utc, snr, dt, freq, hex, text)"""
@@ -207,13 +206,17 @@ class Sim:
 
     def sane(self, name, max_open=4):
         s = self.stat
+        segbad = js8seg.problems(self.dir)
+        st = [x for x in js8seg.state(self.dir) if x['ok']]
         ok = (self.rc == 0 and s.get('decode_out.tx_calls') == 0 and s.get('decode_out.net_calls') == 0 and self.over40 == 0
               and s.get('decode_out.over40') == 0 and s.get('files.nofd') == 0 and s.get('files.badname') == 0
               and s.get('files.max_open', 99) <= max_open and s.get('files.still_open') == 0 and s.get('app.log_err') == 0
-              and s.get('decode_out.win_over40') == 0)
-        return check(name + ': exit 0, no TX / network call, all DECODE lines <= 40, app-window lines <= 40, <= %d files open, no bad file name, no log error' % max_open, ok,
-                     'rc=%d tx=%s net=%s over40=%s max_open=%s nofd=%s badname=%s' % (self.rc, s.get('decode_out.tx_calls'), s.get('decode_out.net_calls'),
-                                                                                    s.get('decode_out.over40'), s.get('files.max_open'), s.get('files.nofd'), s.get('files.badname')))
+              and s.get('decode_out.win_over40') == 0 and not segbad and st and s.get('feat.spare_dirty') == 0)
+        return check(name + ': exit 0, no TX / network call, all DECODE lines <= 40, app-window lines <= 40, <= %d files open, no bad file name, no log error, '
+                     'every segment file complete with a valid CRC, a valid state file' % max_open, ok,
+                     'rc=%d tx=%s net=%s over40=%s max_open=%s nofd=%s badname=%s%s' % (self.rc, s.get('decode_out.tx_calls'), s.get('decode_out.net_calls'),
+                                                                                    s.get('decode_out.over40'), s.get('files.max_open'), s.get('files.nofd'), s.get('files.badname'),
+                                                                                    (' segments: ' + '; '.join(segbad[:3])) if segbad else ''))
 
 
 def fresh(name):
@@ -518,19 +521,21 @@ def run_scenarios(skip_rt):
     gen_wav(wavc, 4, [(1000, 0.0, -5, f1, 0), (1000, 0.0, -5, f2, 1), (1000, 0.0, -5, f3, 2), (1000, 0.0, -5, f4, 3)])
     s = Sim(wavc, fresh('ctl'), args=['-k', '0', '-T', '5'])
     s.sane('control characters')
-    raw_l, raw_m = open(s.dir + '/JS8LOG.TXT', 'rb').read(), open(s.dir + '/JS8MSG.TXT', 'rb').read()
+    segs_l, segs_m = js8seg.stream(s.dir, 'JS8L'), js8seg.stream(s.dir, 'JS8M')
+    raw_l, raw_m = b''.join(x.raw for x in segs_l), b''.join(x.raw for x in segs_m)
 
     def textfile(b, kinds):
         ls = b.split(b'\r\n')
         return (ls[-1] == b'' and all(l and chr(l[0]) in kinds and all(32 <= c <= 126 for c in l) for l in ls[:-1]) and chr(ls[0][0]) == 'H')
     ml = s.mlines()
-    check('control characters: JS8LOG.TXT is 1 header + 4 R lines, JS8MSG.TXT 1 header + 1 M line, CR LF only at line ends, printable ASCII only; '
-          'the message and the popup show the newline as a blank and 0x1A as "?"',
-          textfile(raw_l, 'HRN') and textfile(raw_m, 'HM') and raw_l.count(b'\r\n') == 5 and raw_m.count(b'\r\n') == 2 and len(s.rlines()) == 4
+    check('control characters: the frame log segments hold 4 R lines, the message log segments 1 M line (each segment: header line, lines, trailer line), '
+          'CR LF only at line ends, printable ASCII only; the message and the popup show the newline as a blank and 0x1A as "?"',
+          all(textfile(x.raw, 'HRNE') for x in segs_l) and all(textfile(x.raw, 'HME') for x in segs_m)
+          and raw_l.count(b'\r\n') == 4 + 2 * len(segs_l) and raw_m.count(b'\r\n') == 1 + 2 * len(segs_m) and len(s.rlines()) == 4
           and len(ml) == 1 and ml[0]['text'] == 'Q1ABC: OK1BT HELLO N 120 FAKE NOTE?END' and ml[0]['flags'] == '>'
           and s.popups == ['JS8 message for OK1BT | Q1ABC: OK1BT HELLO N 120 FAKE | NOTE?END'] and all(all(32 <= ord(c) <= 126 for c in l) for l in s.d),
           'M: %s ; popup: %s' % (' / '.join(m['text'] for m in ml), ' ; '.join(s.popups)))
-    block('`cat -A` of JS8LOG.TXT and JS8MSG.TXT:', (raw_l + raw_m).decode('latin1').replace('\r', '^M').replace('\n', '$\n'))
+    block('`cat -A` of the JS8L* and JS8M* segment files:', (raw_l + raw_m).decode('latin1').replace('\r', '^M').replace('\n', '$\n'))
 
     # B: log "append" without an append mode: rollover into archive files, restart
     md.append('')
@@ -559,13 +564,15 @@ def run_scenarios(skip_rt):
     got_sorted = []
     for i in range(0, len(got_r), 8):
         got_sorted += sorted(got_r[i:i + 8])
-    check('rollover: archives + JS8LOG.TXT hold every frame of both runs once, in time order (%d expected)' % len(want), got_sorted == want,
+    check('rollover: the JS8L segments hold every frame of both runs once, in time order (%d expected)' % len(want), got_sorted == want,
           '%d R lines in %s; run 1 alone: %s' % (len(got_r), ' + '.join('%s (%d B)' % (n, os.path.getsize(d + '/' + n)) for n in names), ' + '.join(names1)))
     gm = [(m['utc'], m['text']) for m in s2.mlines()]
-    check('rollover: JS8M archives + JS8MSG.TXT hold all %d single-frame messages' % len(want), len(gm) == len(want) and len(set(gm)) == len(want),
+    check('rollover: the JS8M segments hold all %d single-frame messages' % len(want), len(gm) == len(want) and len(set(gm)) == len(want),
           '%d M lines in %s' % (len(gm), ' + '.join('%s (%d B)' % (n, os.path.getsize(d + '/' + n)) for n in mnames)))
-    sizes_ok = all(os.path.getsize(d + '/' + n) <= 6144 for n in names) and all(os.path.getsize(d + '/' + n) <= 3072 for n in mnames)
-    check('rollover: no log file larger than its RAM tail (6144 / 3072 B), more than one archive written', sizes_ok and len(names) >= 3 and len(mnames) >= 3,
+    sizes_ok = all(os.path.getsize(d + '/' + n) <= 4096 for n in names) and all(os.path.getsize(d + '/' + n) <= 1536 for n in mnames)
+    seqs = [x.seq for x in js8seg.stream(d, 'JS8L')]
+    check('rollover: no segment larger than its RAM buffer (4096 / 1536 B), several segments written, run 2 continued the sequence numbers of run 1 (1..n without a gap)',
+          sizes_ok and len(names) >= 3 and len(mnames) >= 3 and seqs == list(range(1, len(seqs) + 1)) and len(names1) < len(names),
           'frame log files %d, message log files %d' % (len(names), len(mnames)))
     md.append('')
     md.append('Files after both runs: ' + ', '.join('`%s` %d B' % (n, os.path.getsize(d + '/' + n)) for n in names + mnames))
@@ -848,19 +855,22 @@ def run_real():
     return res
 
 
-RX_FILES = ['shell/js8app.c', 'src/js8dec.c', 'src/js8msg.c', 'src/js8jsc.c', 'src/js8asm.c', 'src/js8_constants.c', 'src/js8crc.c', 'src/js8enc.c', 'shell/digi_util.c']
-RX_FORBIDDEN = (r'icap_(tx|net)_|icap_(remove|mode|radio_state)\b|\b(tx_begin|tx_audio_write|tx_end|net_(status|open|send|recv|close|error))\b'
-                r'|icap__svc|svc *->|ICAP_O_(ROOT|RADIO)')
+APP_FILES = ['shell/js8app.c', 'shell/js8app_store.h', 'shell/js8app_tx.h', 'shell/js8app_kbd.h', 'src/js8dec.c', 'src/js8msg.c', 'src/js8jsc.c',
+             'src/js8asm.c', 'src/js8feat.c', 'src/js8tx.c', 'src/js8pack.c', 'src/js8_constants.c', 'src/js8crc.c', 'src/js8enc.c', 'shell/digi_util.c']
 
 
 def check_rx_only():
-    """Receive only: runs with and without an ARM compiler.  The sources linked into JS8.APP (the list of
-    shell/build.sh) must not name a transmit, network, remove, mode or radio-state service of the loader, nor
-    reach into the service table directly.  A source check, not a proof about the binary."""
-    miss = [f for f in RX_FILES if not os.path.isfile(os.path.join(SRC, f))]
-    hit = sh(['grep', '-n', '-E', RX_FORBIDDEN] + RX_FILES, cwd=SRC).stdout.strip()
-    check('RX only: no transmit / network / remove / mode / radio-state service of the loader and no direct service-table '
-          'access is named in any source linked into JS8.APP', not hit and not miss, (hit or ', '.join(miss))[:200])
+    """Loader services, a source check (the binaries are checked by tests/tx_e2e.py: no transmit symbol in JS8.APP):
+    a transmit service of the loader is called only in shell/js8app_tx.h, which js8app.c includes only with -DJS8_TX;
+    no source of the release calls a network service or reaches into the service table directly."""
+    miss = [f for f in APP_FILES if not os.path.isfile(os.path.join(SRC, f))]
+    txc = sh(['grep', '-lE', r'icap_tx_[a-z_]+ *\(', '--'] + APP_FILES, cwd=SRC).stdout.split()
+    net = sh(['grep', '-nE', r'icap_net_[a-z_]+ *\(|icap__svc|svc *->', '--'] + APP_FILES, cwd=SRC).stdout.strip()
+    app = open(os.path.join(SRC, 'shell/js8app.c'), encoding='utf-8').read()
+    inc = re.findall(r'#ifdef JS8_TX\n#include "js8app_tx\.h"', app)
+    check('loader services: icap_tx_* is called only in shell/js8app_tx.h (included only with -DJS8_TX), no network call and no '
+          'direct service-table access in any source of the radio apps', txc == ['shell/js8app_tx.h'] and not net and not miss and len(inc) == 1 and app.count('js8app_tx.h"') == 1,
+          (net or ' '.join(txc) or ', '.join(miss))[:200])
 
 
 def run_arm():
@@ -886,7 +896,7 @@ def run_arm():
     nm = sh([tc + 'nm', BUILD + '/arm/obj/js8.elf']).stdout
     helpers = sorted(set(re.findall(r' T (__aeabi_\w+|__\w*div\w*)', nm)))
     check('ARM: no undefined symbol, no 64-bit division helper', not und and not any('ldiv' in x or 'di3' in x for x in helpers), 'libgcc helpers linked: ' + ', '.join(helpers))
-    txc = sh(['grep', '-n', '-E', r'icap_(tx|net)_[a-z_]+ *\(', 'shell/js8app.c', 'src/js8dec.c', 'src/js8msg.c', 'src/js8jsc.c', 'src/js8asm.c', 'src/js8_constants.c', 'src/js8crc.c', 'src/js8enc.c',
+    txc = sh(['grep', '-n', '-E', r'icap_(tx|net)_[a-z_]+ *\(', 'shell/js8app.c', 'shell/js8app_store.h', 'src/js8dec.c', 'src/js8msg.c', 'src/js8jsc.c', 'src/js8asm.c', 'src/js8feat.c', 'src/js8_constants.c', 'src/js8crc.c', 'src/js8enc.c',
               'shell/digi_util.c'], cwd=SRC).stdout.strip()
     check('ARM: no icap_tx_* / icap_net_* call in any source linked into JS8.APP (RX only)', not txc, txc[:200])
     # struct sizes ON THE RADIO (the simulator's numbers are x86-64 sizes): a probe object compiled with the ARM
@@ -901,13 +911,14 @@ def run_arm():
     hz = dict((m_.group(2), int(m_.group(1), 16)) for m_ in re.finditer(r'(?m)^[0-9a-f]+ ([0-9a-f]+) \w (js8sz_\w+)$', sh(['nm', '-S', ho]).stdout))
     if pr.returncode == 0 and 'js8sz_asm' in sz and 'js8sz_jsc' in sz and 'js8sz_asm' in hz:
         al = lambda v: (v + 7) & ~7
-        reserve = al(sz['js8sz_asm']) + al(sz['js8sz_jsc']) + 35840 + 6144 + 3072 + 4096
-        hres = al(hz['js8sz_asm']) + al(hz['js8sz_jsc']) + 35840 + 6144 + 3072 + 4096
-        check('ARM: shell reserve from the ARM struct sizes leaves the decoder at least the arena the simulator (x86-64 sizes) ran with',
-              reserve <= hres, 'ARM: js8asm_t %d B, js8jsc_t %d B -> reserve %d B, decoder arena %d B; simulator: reserve %d B, arena %d B' % (
-                  sz['js8sz_asm'], sz['js8sz_jsc'], reserve, 245760 - reserve, hres, 245760 - hres))
+        reserve = al(sz['js8sz_asm']) + al(sz['js8sz_jsc']) + 35840 + 4096 + 1536 + al(sz['js8sz_feat']) + 4096
+        hres = 55936                             # JS8_RESERVE of shell/js8app.c: fixed, the same on the radio and in the simulator
+        hneed = al(hz['js8sz_asm']) + al(hz['js8sz_jsc']) + 35840 + 4096 + 1536 + al(hz['js8sz_feat']) + 4096
+        check('ARM: the shell pieces (ARM struct sizes, and the x86-64 sizes of the simulator) fit the fixed shell reserve, so the decoder has the same arena on the radio as in the simulator',
+              reserve <= hres and hneed <= hres, 'ARM: js8asm_t %d B, js8jsc_t %d B, js8feat_t %d B -> the shell needs %d B of its fixed %d B; decoder arena on the radio and in the simulator: %d B' % (
+                  sz['js8sz_asm'], sz['js8sz_jsc'], sz['js8sz_feat'], reserve, hres, 245760 - hres))
         block('Struct sizes in the ARM build (`tests/arm_sizes.c`, `arm-none-eabi-nm -S`):', '\n'.join('%-18s %6d B' % (k_[6:], v_) for k_, v_ in sorted(sz.items())) +
-              '\nshell reserve = align8(asm) + align8(jsc) + 35840 (dictionary head) + 6144 + 3072 (log tails) + 4096 (capture read block) = %d B\ndecoder arena  = 245760 - %d = %d B' % (reserve, reserve, 245760 - reserve))
+              '\nshell pieces = align8(asm) + align8(jsc) + 35840 (dictionary head) + 4096 + 1536 (segment buffers) + align8(features) + 4096 (capture read block) = %d B of the fixed 55936 B (JS8_RESERVE)\ndecoder arena  = 245760 - 55936 = %d B' % (reserve, 245760 - 55936))
     else:
         check('ARM: size probe tests/arm_sizes.c compiles', False, pr.stdout[:300])
 
