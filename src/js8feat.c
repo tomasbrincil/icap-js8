@@ -201,13 +201,20 @@ void js8f_tick(js8feat_t *f, uint32_t now)
     for (i = 0; i < JS8F_PREP; i++) if (f->prep[i][0] && now - f->prep_t[i] > JS8F_PREP_TTL) f->prep[i][0] = 0;
 }
 
-void js8f_band(js8feat_t *f, const char *l)
+void js8f_band(js8feat_t *f, const char *l, int freq)
 {
     char *d = f->band[f->band_pos], *q = d;
     int i;
-    /* "HHMM sNN FFFF TEXT" (a row of the DECODE screen, <= 40 characters) -> "HHMM FFFF TEXT" */
+    /* "HHMM TEXT" (the first row of a decoded text on the DECODE screen, <= 40 characters) + its audio offset
+     * -> "HHMM FFFF TEXT", cut to JS8F_W */
     for (i = 0; i < 4 && l[i]; i++) *q++ = l[i];
-    if (len(l) > 9) for (i = 8; l[i] && q - d < JS8F_W; i++) *q++ = l[i];
+    if (len(l) > 5) {
+        unsigned v = freq < 0 ? 0u : freq > 9999 ? 9999u : (unsigned)freq;
+        *q++ = ' ';
+        for (i = 1000; i > 1 && v < (unsigned)i; i /= 10) *q++ = ' ';
+        q = un(q, v, 1);
+        for (i = 4; l[i] && q - d < JS8F_W; i++) *q++ = l[i];
+    }
     *q = 0;
     f->band_pos = (uint8_t)((f->band_pos + 1) % JS8F_BAND);
     if (f->band_n < JS8F_BAND) f->band_n++;

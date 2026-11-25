@@ -69,7 +69,7 @@ make test-full     # plus decoder statistics, kernel bench, profile, sanitizer a
 | `dec`, `t2` | builds the decoder bench; clean loopback sweep over frequency and time offset, must be 100 % |
 | `stream` | the streaming front end gives the same frames as the non-streamed decode |
 | `e2e` | the receive-only app in the loader simulator on generated scenarios: DECODE rows, pop-ups and log files are compared with what was sent. It checks the sources: the loader's transmit services are called only in `shell/js8app_tx.h` (compiled into `FT8.APP` only), and no source calls a network service. With an ARM compiler it also builds `JS8.APP` and checks its size and its symbols |
-| `t7` | the transmit engine against a mock loader, plain and under ASan / UBSan: selection and timing of frames, tap credit, beacon and CQ arming, HB beacon, every loader error, the caps, the cancel and stop rules; the 79 tones of 1000 random frames against the Python model |
+| `t7` | the transmit engine against a mock loader, plain and under ASan / UBSan: selection and timing of frames, tap credit, beacon arming, the green frame (sends nothing), HB beacon, every loader error, the caps, the cancel and stop rules; the 79 tones of 1000 random frames against the Python model |
 | `txe2e` | the RX+TX app in the simulator: what it sends is decoded again by the receiver (loopback), slot timing, the safety cases (zero samples on the air when nothing may go out), both strategies, an accelerated 2-hour soak, ASan runs. With an ARM compiler it builds `JS8.APP` and `FT8.APP`, checks them against the 80 KiB window, checks that `JS8.APP` holds no transmit object or symbol, and that a second build is byte-identical |
 | `fixe2e` | the keyboard control at app level: the prefilled keyboard, the wait after the tap, tap credit and red frame, EXIT, the cancel, one waiting message, HB only on a fresh arming, the green frame, taps while armed, the dictionary on the card root |
 
@@ -109,9 +109,9 @@ If the directory also holds an `expected.json`, the end-to-end comparison in the
 make arm-all ICAP_SDK=/path/to/icap-sdk CROSS=/path/to/toolchain/bin/arm-none-eabi-
 ```
 
-writes `build/arm/FT8.APP` (receive + transmit, `FLAVOUR=tx sh shell/build.sh`, 75,240 bytes) and `build/arm/JS8.APP` (receive only, `sh shell/build.sh`, 66,140 bytes), with Arm GNU Toolchain 12.2.rel1 and the pinned SDK commit, and prints the section sizes. `make arm-tx` and `make arm` build one of them. In `FT8.APP` the shell and the cold modules are Thumb code (otherwise it does not fit the loader's 80 KiB window); the build fails if the linker inserts an interworking veneer, whose absolute address the loader would not relocate (see the top of `shell/build.sh`).
+writes `build/arm/FT8.APP` (receive + transmit, `FLAVOUR=tx sh shell/build.sh`, 75,144 bytes) and `build/arm/JS8.APP` (receive only, `sh shell/build.sh`, 66,064 bytes), with Arm GNU Toolchain 12.2.rel1 and the pinned SDK commit, and prints the section sizes. `make arm-tx` and `make arm` build one of them. In `FT8.APP` the shell and the cold modules are Thumb code (otherwise it does not fit the loader's 80 KiB window); the build fails if the linker inserts an interworking veneer, whose absolute address the loader would not relocate (see the top of `shell/build.sh`).
 
-**Build id.** `FT8.APP` shows a build id at the end of line 0 of its app window. By default `shell/build.sh` sets it to `a65e`, the commit of the development tree this release was exported from; with that id the two files built here are byte-identical to the ones built there. When you build changed sources, set your own: `JS8_BUILD_ID=my1 make arm-tx` (letters, digits, `+` and `-`).
+**Build id.** `FT8.APP` shows a build id at the end of line 0 of its app window. By default `shell/build.sh` sets it to `331e7`, the commit of the development tree this release was exported from; with that id the two files built here are byte-identical to the ones built there. When you build changed sources, set your own: `JS8_BUILD_ID=my1 make arm-tx` (letters, digits, `+` and `-`).
 
 ```
 make dist
@@ -123,19 +123,19 @@ If you pass the dictionary files or the app on to somebody else, the GPL applies
 
 ## What was verified, and what was not
 
-Verified for release 0.2.0 on 24 November 2026, on one machine (Debian 13, x86-64, gcc 14.2, GNU Make 4.4.1, Python 3.13), from a fresh `git clone` of this repository with an empty environment (`env -i`), the SDK and the JS8Call reference files given by `ICAP_SDK` and `JS8_REF`, and no recording present:
+Verified for release 0.2.1 on 25 November 2026, on one machine (Debian 13, x86-64, gcc 14.2, GNU Make 4.4.1, Python 3.13), from a fresh `git clone` of this repository with an empty environment (`env -i`), the SDK and the JS8Call reference files given by `ICAP_SDK` and `JS8_REF`, and no recording present:
 
 - `make test` passed (receive and transmit suites);
-- `make arm-all` produced `FT8.APP` and `JS8.APP` byte-identical to the files built from the development tree at the commit the release was exported from (build id `a65e`), the files whose builds ran on the radio;
+- `make arm-all` produced `FT8.APP` and `JS8.APP` byte-identical to the files built from the development tree at the commit the release was exported from (build id `331e7`; the build of 0.2.1 has not run on the radio yet, the build `2858` before it has);
 - `make dist` wrote the SD-card set (515 dictionary files, both apps) and the archive.
 
-From release 0.1.0 (receive side, not repeated for 0.2.0): `make test-full`, `make test-recordings` with our private set of 19 recordings, `make e2e` without an ARM compiler, and `make fetch` over the network once.
+From release 0.1.0 (receive side, not repeated for 0.2.0 and 0.2.1): `make test-full`, `make test-recordings` with our private set of 19 recordings, `make e2e` without an ARM compiler, and `make fetch` over the network once.
 
 **Not verified:**
 
 - a build on any other machine, operating system or compiler; clang; macOS; Windows;
 - any toolchain other than Arm GNU Toolchain 12.2.rel1 for the ARM build;
-- `make test-full` and `make fetch` over the network for 0.2.0.
+- `make test-full` and `make fetch` over the network for 0.2.0 and 0.2.1.
 
 ## Other targets
 

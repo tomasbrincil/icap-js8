@@ -68,9 +68,9 @@ if [ "$FLAVOUR" = tx ]; then
   # builds, never the RX builds
   XD="$XD -DJS8_KBD"
   # build id, shown on line 0 of the app window: by default the commit of the development tree this release was
-  # exported from (a65e), so that this build and the one made there are byte-identical.  Set JS8_BUILD_ID=<text>
+  # exported from (331e7), so that this build and the one made there are byte-identical.  Set JS8_BUILD_ID=<text>
   # (letters, digits, '+', '-'; a few characters) when you build changed sources.
-  BID=${JS8_BUILD_ID:-a65e}
+  BID=${JS8_BUILD_ID:-331e7}
   case "$BID" in *[!A-Za-z0-9+-]*|'') echo "build.sh: JS8_BUILD_ID may hold letters, digits, + and - only" >&2; exit 1;; esac
   XD="$XD -DJS8_BUILD=\"$BID\""
   TXF="$CF -Os -mthumb -ffp-contract=off -fstack-usage -Isrc -I$SDK/apps/digi-common"

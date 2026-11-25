@@ -121,6 +121,8 @@
  *              description.  Owner event "net 0|1": the network goes away (all sockets die) / comes back.
  * Output (stdout):
  *   D <line>            icap_decode_out          P <text>   icap_print
+ *   Q <snr> <freq>      SNR (dB) and audio offset (Hz) of the decoded text whose first DECODE row follows (the rows show
+ *                       neither since 24 Nov 2026; the app tells only the test bench: JS8_HOST_DECMETA)
  *   U <text>            popup (newlines shown as " | ")
  *   L<n> <text>         app window line (with -p; the final window always, as "W<n>")
  *   # ...               summary: virtual time, files, audio, decode statistics
@@ -205,6 +207,8 @@ static __attribute__((unused)) void sim_kbdclose(void)
 #define JS8_HOST_KBDCLOSE sim_kbdclose
 #define JS8_HOST_TOUCHED sim_touched
 #define JS8_HOST_KBDID sim_kbdid
+static void sim_decmeta(int snr, int freq) { printf("Q %+03d %d\n", snr, freq); }
+#define JS8_HOST_DECMETA sim_decmeta
 
 /* ---- TX model state (-X) */
 static struct {

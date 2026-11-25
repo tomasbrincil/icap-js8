@@ -108,13 +108,8 @@ static void tx_slot(void)
     if (!sent) return;                           /* nothing was keyed: the receiver goes on as if nothing happened */
     n_txslots++;
     kbd_resync();                                /* taps made while the frame was keyed are no request */
-    if (txq.armed && !txq.qn) {                  /* (taps are not delivered while armed) */
-        if (txq.last_src == JS8TX_SRC_HB) {      /* U4: "HB sent, next in 10 min - red off stops" */
-            char l[DEC_W + 1];
-            cat(num(cat(l, "HB sent, next in "), txq.hb_min, 0, ' '), " min - red off stops");
-            icap_decode_out(l);
-        } else icap_decode_out("TX done - red frame off to tap again");
-    }
+    /* (a message that went out whole: js8tx_run said "SENT: <text>" / "HB SENT, next in N min", and while the beacon is
+     * armed - taps are not delivered then - "red frame off to tap again") */
     if (cap.fd >= 0) cap_finish();               /* the period before the transmission: decode what was captured */
     for (int g = 0; g < 64 && icap_audio_read(abuf, (int)(sizeof abuf / sizeof abuf[0])) != 0; g++) ;
     if (icap_clock_now(&t) == 0 && t.year >= 2020)   /* the transmitted period is not a "skipped" one */

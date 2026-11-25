@@ -56,9 +56,11 @@
  * DECODE screen (icap_decode_out, EVERY row <= 40 characters - decodes, status rows of the transmitter, views: longer
  * rows wrap on the radio when the mini-scope is shown; in decoded text the word HEARTBEAT is shown as HB here, the logs
  * keep the full text and the seconds):
- *   "HHMM sNN FFFF TEXT"          one decoded frame (period start, SNR dB / 2500 Hz, tone-0 Hz)
- *   "HHMM sNN FFFF = TEXT"        a complete reassembled message of more than one frame
- *   "HHMM sNN FFFF > TEXT"        a complete message addressed to MYCALL; a one-frame message to
+ *   (owner decision 24 Nov 2026: no SNR and no audio offset on the rows - both stay in the logs JS8L / JS8M)
+ *   "HHMM TEXT"                   one decoded frame (HHMM = period start)
+ *   "HHMM = TEXT"                 a complete reassembled message of more than one frame
+ *   "HHMM ? TEXT"                 a complete message whose checksum did not verify
+ *   "HHMM > TEXT"                 a complete message addressed to MYCALL; a one-frame message to
  *                                 MYCALL is shown only in this form.  It is also raised as a popup -
  *                                 at most ONE per 15 s period, at most 4 in a row and then one per 20
  *                                 periods, and none for a message with a wrong checksum or an incomplete
@@ -67,8 +69,11 @@
  *   "TX? <answer>"                (TX flavour) the answer to a query to MYCALL (SNR? GRID? INFO? STATUS? HEARING?),
  *                                 PREPARED only: a tap on it or on the query opens the radio's keyboard with it,
  *                                 and only ENT sends it (shell/js8app_kbd.h)
- *   "TX ..." rows                 (TX flavour) what the transmitter does: "TX queued: arm beacon to send 3 frames",
- *                                 "TX: on air at the next slot (tap)", "TX refused: ...", "HHMM TX <f0> k/n <text>"
+ *   status rows                   (TX flavour) what the transmitter does: "3 parts: MODE > hold FT8 (red), 2 min",
+ *                                 "TX: on air at the next slot (tap)", "TX refused: ...", "HHMM TX <f0> k/n <text>",
+ *                                 "SENT: <text>" (+ "red frame off to tap again" while the beacon is armed)
+ *                                 (a JS8 frame is a "part" on the screen: "frame" there is the red / green frame
+ *                                 of the radio's MODE menu, set by holding FT8)
  *   A tap on any row opens the radio's keyboard (TX flavour; shell/js8app_kbd.h).
  * MYCALL = call= of JS8.CFG, else the radio's "@MYCALL".  Locator = the radio's "@MYLOC", else loc=.
  *
@@ -248,7 +253,7 @@ static int link_stop(void);
 #define POP_BURST   4                   /* popups: at most this many in a row ... */
 #define POP_REFILL  20u                 /* ... and one more every 20 periods (5 minutes) */
 #define BAND_MIN    100                 /* Hz: narrowest tone-0 range accepted from JS8.CFG */
-#define PFX_W       14                  /* "HHMM sNN FFFF " */
+#define PFX_W       5                   /* "HHMM " */
 #define CONT_W      5                   /* indent of a continuation line */
 
 #ifdef DIGI_HOST
@@ -736,20 +741,21 @@ static struct { int hh, mm, ss; uint32_t ymd; } now_p;      /* the period being 
 static char pend[104];                /* frame text waiting for its DECODE line */
 static int pend_snr, pend_freq, pend_on;
 
-/* "HHMM sNN FFFF [m ]TEXT", continuation lines indented by CONT_W; every line <= DEC_W characters.  On the screen
- * only, the word HEARTBEAT is shown as HB (the logs keep the full text).  A line that is full is broken at a blank in
- * its second half if there is one. */
+/* "HHMM [m ]TEXT" (m: = > ?), continuation lines indented by CONT_W; every line <= DEC_W characters.  No SNR and no
+ * audio offset on the screen (owner decision 24 Nov 2026; both are in the logs).  On the screen only, the word
+ * HEARTBEAT is shown as HB (the logs keep the full text).  A line that is full is broken at a blank in its second half
+ * if there is one.  The BAND view of the app window keeps the offset: "HHMM FFFF TEXT". */
 static void dec_lines(int snr, int freq, char mark, const char *text)
 {
     static const char hbw[] = "HEARTBEAT";
     char line[DEC_W + 1], *q;
     int n = slen(text), pos = 0, first = 1;
+    (void)snr;                                   /* (the logs have it; only the test bench sees it here) */
     while (n > 0 && text[n - 1] == ' ') n--;
     do {
         q = line;
         if (first) {
-            q = num(q, now_p.hh, 2, '0'); q = num(q, now_p.mm, 2, '0'); *q++ = ' '; q = snr3(q, snr); *q++ = ' ';
-            q = num(q, freq > 9999 ? 9999 : freq < 0 ? 0 : freq, 4, ' '); *q++ = ' ';
+            q = num(q, now_p.hh, 2, '0'); q = num(q, now_p.mm, 2, '0'); *q++ = ' ';
             if (mark) { *q++ = mark; *q++ = ' '; }
         } else for (int i = 0; i < CONT_W; i++) *q++ = ' ';
         const int room = DEC_W - (int)(q - line);
@@ -768,11 +774,14 @@ static void dec_lines(int snr, int freq, char mark, const char *text)
         }
         *q = 0;
         while (pos < n && text[pos] == ' ') pos++;   /* a continuation line does not start with the blank */
+#ifdef JS8_HOST_DECMETA
+        if (first) JS8_HOST_DECMETA(snr, freq);  /* the test bench: SNR and offset of the row that follows (not on the screen) */
+#endif
         icap_decode_out(line);
 #ifdef JS8_TX
         kbd_cont(line, first);                   /* a tap on a continuation row takes this call (U6) */
 #endif
-        if (first) js8f_band(feat, line);        /* the BAND view of the app window */
+        if (first) js8f_band(feat, line, freq);  /* the BAND view of the app window ("HHMM FFFF TEXT") */
         first = 0;
     } while (pos < n);
 }
@@ -800,12 +809,12 @@ static void on_message(void *user, const js8asm_msg_t *m)   /* js8asm: one compl
      * closed it; a message completed by the current frame comes after that frame's line. */
     if (leaving) { }
     else if (m->flags & JS8ASM_F_TIMEOUT) {      /* (a one-frame message was already shown as its frame line) */
-        if (m->frames > 1 || tome) dec_lines(m->snr, m->freq, tome ? '>' : (m->flags & JS8ASM_F_CRC_BAD) ? '?' : '=', m->text);
+        if (m->frames > 1 || tome) dec_lines(m->snr, m->freq, (m->flags & JS8ASM_F_CRC_BAD) ? '?' : tome ? '>' : '=', m->text);
     }
     else if (m->frames == 1 && pend_on) {        /* the frame is the message: one line */
         if (tome) { pend_on = 0; dec_lines(m->snr, m->freq, '>', m->text); }
         else pend_flush();
-    } else { pend_flush(); dec_lines(m->snr, m->freq, tome ? '>' : (m->flags & JS8ASM_F_CRC_BAD) ? '?' : '=', m->text); }
+    } else { pend_flush(); dec_lines(m->snr, m->freq, (m->flags & JS8ASM_F_CRC_BAD) ? '?' : tome ? '>' : '=', m->text); }
     /* message log */
     *q++ = 'M'; *q++ = ' '; q = stamp(q); *q++ = ' '; q = snr3(q, m->snr); *q++ = ' '; q = num(q, m->freq, 0, ' '); *q++ = ' ';
     q = num(q, m->frames, 0, ' '); *q++ = ' ';

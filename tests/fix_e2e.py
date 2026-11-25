@@ -192,7 +192,7 @@ def main():
     r = Run('f2_armed_at_start', TAPS % ('HB', 'HB'), flags='on,tapsarmed,armed', tail=60)
     check('F2 the beacon is armed BEFORE the app starts (a leftover FT8.CFG with beacon=1), heartbeat confirmed by two taps, 2 minutes: ZERO samples, zero tx_begin, '
           'note "TX: red frame at start - off, on again"',
-          r.zero() and r.said('TX 1 frame: long press within 2 min') and any('red frame at start' in n for n in r.notes()),
+          r.zero() and r.said('1 part: MODE > hold FT8 (red), 2 min') and any('red frame at start' in n for n in r.notes()),
           'samples %s, tx_begin %s; notes %s' % (r.tx('samples'), r.tx('begin'), [n for n in r.notes() if 'TX' in n]))
     r = Run('f2_then_rearmed', TAPS % ('HB', 'HB') + ';30 disarm;33 arm', flags='on,tapsarmed,armed', tail=60)
     b = r.bursts()
@@ -203,14 +203,14 @@ def main():
     r = Run('f3_next_preset', TAPS % ('NEXT WEEK', 'NEXT WEEK') + ';10 arm', cfg='tx1=NEXT WEEK SAME TIME', tail=80)
     rt = rx_texts('f3_rx', r.wav) if r.bursts() else []
     check('F3 preset "NEXT WEEK SAME TIME" confirmed and armed: it is transmitted, and a separate receiver reads "OK1BT: NEXT WEEK SAME TIME"',
-          r.rc == 0 and r.said('long press within') and len(rt) == 1 and rt[0][1] == 'OK1BT: NEXT WEEK SAME TIME', 'received %s; rows %s' % (rt, [l for l in r.d if 'TX' in l][-3:]))
+          r.rc == 0 and r.said('MODE > hold FT8 (red), 2 min') and len(rt) == 1 and rt[0][1] == 'OK1BT: NEXT WEEK SAME TIME', 'received %s; rows %s' % (rt, [l for l in r.d if 'TX' in l][-3:]))
 
     # F4 ------------------------------------------------------------------------------------------------------------
     r = Run('f4_at_hb', TAPS % ('@HB', '@HB') + ';10 arm', cfg='tx1=@HB HEARTBEAT JO70', tail=60)
     b = r.bursts()
     rt = rx_texts('f4_rx', r.wav) if b else []
     check('F4 preset "@HB HEARTBEAT JO70": ONE frame (it was a directed frame + a data frame), received as the heartbeat "OK1BT: @HB HEARTBEAT JO70"',
-          r.rc == 0 and len(b) == 1 and r.said('TX 1 frame: long press within 2 min') and len(rt) == 1 and rt[0] == (1, 'OK1BT: @HB HEARTBEAT JO70'), 'frames %d, received %s' % (len(b), rt))
+          r.rc == 0 and len(b) == 1 and r.said('1 part: MODE > hold FT8 (red), 2 min') and len(rt) == 1 and rt[0] == (1, 'OK1BT: @HB HEARTBEAT JO70'), 'frames %d, received %s' % (len(b), rt))
 
     # F5 ------------------------------------------------------------------------------------------------------------
     sd2 = os.path.join(ROOT, 'sd_nosum')
@@ -263,7 +263,7 @@ def main():
     r = Run('f8_txpath', TAPS % ('HB', 'HB') + ';30 tap JS8 TX;32 tap TX> HB;35 tap SEND? HB', cfg='txpath=1', tail=60)
     check('F8 JS8.CFG "txpath=1" (any message on tap grants: gone since 24 Nov 2026), heartbeat sent with ENT and txtap=0, beacon NEVER armed: ZERO samples, "@QTX" never asked, '
           'note "JS8.CFG: txpath is gone (see txtap)"',
-          r.zero() and r.tx('qtx') == 0 and r.said('long press within') and any('txpath is gone' in n for n in r.notes()),
+          r.zero() and r.tx('qtx') == 0 and r.said('MODE > hold FT8 (red), 2 min') and any('txpath is gone' in n for n in r.notes()),
           'samples %s, @QTX asked %s, notes %s' % (r.tx('samples'), r.tx('qtx'), [n for n in r.notes() if 'CFG' in n]))
 
     # F9 ------------------------------------------------------------------------------------------------------------
@@ -292,7 +292,7 @@ def main():
     # K: the keyboard control (owner decision 24 Nov 2026): a tap on a row opens the radio's keyboard, ENT sends --------------
     def kopen(r):
         return [x.split(' kbd open ', 1)[1].strip('"') for x in r.x if ' kbd open ' in x]
-    r = Run('k1_open', '20 tap 1100 Q7AB;23 kbdexit;25 taprow 0;27 kbdexit', wav=MIX, tail=30)
+    r = Run('k1_open', '20 tap Q7AB: @HB;23 kbdexit;25 taprow 0;27 kbdexit', wav=MIX, tail=30)
     ko = kopen(r)
     check('K1 a tap on a station\'s decoded row opens the radio\'s keyboard with "<CALL> "; a tap on another row with an empty text; never while the finger is '
           'on the screen (the app waits for the release + 300 ms); EXIT sends nothing ("TX: keyboard closed, nothing sent")',
@@ -303,9 +303,10 @@ def main():
           len(r.bursts()) == 1 and r.tx('begin') == 0 and r.tx('qtx_ok') == 1 and r.said('TX: on air at the next slot (tap)') and rt == [(1, 'OK1BT: @HB HEARTBEAT JO70')],
           'tx_begin %s, grants %s, received %s' % (r.tx('begin'), r.tx('qtx_ok'), rt))
     r = Run('k3_frames', '3 taprow 0;4 kbd ' + L3 + ';30 arm', cfg='txtap=1', tail=80)
-    check('K3 ENT on a 3-frame message: queued, "TX 3 frames: long press within 2 min", the tap credit is not asked; the red frame sends the 3 frames; '
-          'then the row "TX done - red frame off to tap again" (taps are not delivered while armed)',
-          r.said('TX 3 frames: long press within 2 min') and r.tx('qtx') == 0 and len(r.bursts()) == 3 and r.tx('begin') == 3 and r.said('TX done - red frame off to tap again'),
+    check('K3 ENT on a 3-frame message: queued, "3 parts: MODE > hold FT8 (red), 2 min", the tap credit is not asked; the red frame sends the 3 frames; '
+          'then the rows "SENT: <text>" and "red frame off to tap again" (taps are not delivered while armed)',
+          r.said('3 parts: MODE > hold FT8 (red), 2 min') and r.tx('qtx') == 0 and len(r.bursts()) == 3 and r.tx('begin') == 3
+          and any(r.d[i] == 'SENT: ' + L3[:34].rstrip() and r.d[i + 1:i + 2] == ['red frame off to tap again'] for i in range(len(r.d))) and not r.said('TX done'),
           'bursts %d, qtx %s' % (len(r.bursts()), r.tx('qtx')))
     r = Run('k3_refused', '3 taprow 0;4 kbd HB JO70', cfg='txtap=1', flags='on,once', tail=40, extra=('-l', '1.5'))
     r = Run('k3_nocredit', '2 arm;3 disarm;3.5 taprow 0;4 kbd HB JO70', cfg='txtap=1', flags='on,tapsarmed', tail=40)
@@ -344,7 +345,7 @@ def main():
     r = Run('k11_preset_late', '3 taprow 0;15 kbd P1;17 kbd =;30 arm', cfg='tx1=' + L3, tail=80)
     check('K11 "P1" + ENT more than 10 s after the keyboard opened: the keyboard opens again with the preset, ENT sends it (3 frames)',
           L3.upper() in kopen(r) and not r.said('keyboard not opened') and len(r.bursts()) == 3, kopen(r))
-    r = Run('k12_call_only', '20 tap 1100 Q7AB;21 kbd =;23 taprow 0;24 kbd Q7AB;26 taprow 0;27 kbd A;30 arm', wav=MIX, cfg='txtap=1', tail=30)
+    r = Run('k12_call_only', '20 tap Q7AB: @HB;21 kbd =;23 taprow 0;24 kbd Q7AB;26 taprow 0;27 kbd A;30 arm', wav=MIX, cfg='txtap=1', tail=30)
     check('K12 the untouched "<CALL> " of a tap on a station\'s row, a callsign alone, one character: "TX: nothing to send - type a message" each time, nothing queued, ZERO samples',
           kopen(r)[:1] == ['Q7AB'] and sum(1 for l in r.d if l == 'TX: nothing to send - type a message') == 3 and r.zero() and r.tx('qtx') == 0,
           [l for l in r.d if l.startswith('TX')][-4:])
@@ -354,8 +355,8 @@ def main():
     r = Run('k13_replace', '3 taprow 0;4 kbd ' + L3 + ';8 taprow 0;9 kbd HB JO70;20 arm', tail=60)
     b = r.bursts()
     rt = rx_texts('k13_rx', r.wav) if b else []
-    check('K13 ONE waiting message: a 3-frame message waits, a new ENT "HB JO70" replaces it (ONE row "TX replaced: ..."); '
-          'that ONE frame only goes out', r.said_n('TX replaced: ') == 1 and len(b) == 1
+    check('K13 ONE waiting message: a 3-frame message waits, a new ENT "HB JO70" replaces it (ONE row "replaced: MODE > hold FT8 (red), 1 part"); '
+          'that ONE frame only goes out', r.said_n('replaced: ') == 1 and r.said('replaced: MODE > hold FT8 (red), 1 part') and len(b) == 1
           and rt == [(1, 'OK1BT: @HB HEARTBEAT JO70')], 'bursts %d, received %s' % (len(b), rt))
     r = Run('k13_in_progress', '3 taprow 0;4 kbd ' + L3 + ';10 arm;40 disarm;45 taprow 0;46 kbd HB JO70;50 arm', flags='on,once', tail=80)
     b = r.bursts()
@@ -376,7 +377,7 @@ def main():
     r = Run('k16_tap_granted', '3 taprow 0;4 kbd HB JO70;6 taprow 0;7 kbd ' + L3, cfg='txtap=1', tail=40)
     check('K16 (S3 24 Nov 2026) a tap while the tap-credit frame is granted for the next slot gives the grant back ("TX: cancelled before the slot"), no keyboard, nothing on the air',
           len(kopen(r)) == 1 and len(r.bursts()) == 0 and r.tx('qtx_ok') == 1 and r.said('TX: cancelled before the slot'), 'opened %s, bursts %d' % (kopen(r), len(r.bursts())))
-    r = Run('k17_retarget', '20 tap 1100 Q7AB;20.1 tapraw RETARGET ROW;24 kbdexit', wav=MIX, extra=('-G', '0'), tail=30)
+    r = Run('k17_retarget', '20 tap Q7AB: @HB;20.1 tapraw RETARGET ROW;24 kbdexit', wav=MIX, extra=('-G', '0'), tail=30)
     check('K17 a quick second tap before the keyboard opened retargets it: it opens ONCE, with the text of the second row (empty), not "Q7AB "',
           kopen(r) == [''] and r.s('kbd_under_finger') == 0, kopen(r))
     r = Run('k18_keep_refused', '3 taprow 0;4 kbd `Q7AB HELLO;8 taprow 0;9 kbdexit;12 taprow 0;13 kbdexit', tail=30)
@@ -393,16 +394,10 @@ def main():
 
     # G: the green frame and the HB beacon
     r = Run('g3_cq_green', '2 cq 1;70 cq 0', tail=60)
-    b = r.bursts()
-    rt = rx_texts('g3_rx', r.wav) if b else []
-    check('G3 the GREEN frame (CQ armed on the radio): ONE frame "CQ CQ CQ JO70" through the loader\'s CQ grant (@QTXC), no tx_begin, nothing more while it stays armed; '
-          'received as "OK1BT: @ALLCALL CQ CQ CQ JO70"', len(b) == 1 and r.tx('begin') == 0 and r.tx('qtx_ok') == 1 and rt == [(1, 'OK1BT: @ALLCALL CQ CQ CQ JO70')],
-          'frames %d, tx_begin %s, grants %s, received %s' % (len(b), r.tx('begin'), r.tx('qtx_ok'), rt))
+    check('G3 NO CQ (owner decision 24 Nov 2026): the green frame on for 68 s sends NOTHING, asks no CQ grant (@QTXC), no tx_begin; row "green not used - hold FT8 again"',
+          r.zero() and r.tx('qtx') == 0 and r.tx('begin') == 0 and r.said('green not used - hold FT8 again'), r.notes())
     r = Run('g3_cq_txtest', '2 cq 1', cfg='txtest=1', tail=40)
     check('G3 the green frame in TXTEST: nothing', r.zero() and r.tx('qtx') == 0, r.notes())
-    r = Run('g3_cq_cancel', '2 cq 1;3 taprow 0;4 kbd;6 cq 0', tail=40)
-    check('G3 the green frame: its CQ is granted for the next slot; a tap gives the grant back (S3 24 Nov 2026: no keyboard, "TX: cancelled before the slot"), '
-          'then the green frame is disarmed: ZERO samples', r.zero() and not kopen(r) and r.said('TX: cancelled before the slot'), r.notes())
     r = Run('g7_hb_beacon', '2 arm', cfg='txhb=10', tail=60, loops=10)
     b = r.bursts()
     check('G7 HB beacon (txhb=10, beacon armed at 2 s, 25 min): "HB JO70" at once and every 10 min - 3 frames; the status line ends "HB10"',
@@ -411,10 +406,10 @@ def main():
     # D: the dictionary on the SD card ROOT (loader limit seen on the radio 23 Nov 2026: apps listed after ~257 dictionary files are not shown)
     empty = os.path.join(ROOT, 'empty_apps'); os.makedirs(empty)
     r = Run('d1_dict_root', '3 taprow 0;4 kbd HB JO70', wav=MIX, sd=empty, extra=('-K', SD), tail=30)
-    raw = [l for l in r.d if re.match(r'^\d{4} [+-]\d\d [ \d]{4} #', l)]
+    raw = [l for l in r.d if re.match(r'^\d{4} (?:[=>?] )?#', l)]
     check('D1 dictionary only on the card root (ICAP_O_ROOT), none in the app folder: it is used (note "JS8: dictionary on the card root", no raw "#" rows, '
           'the dictionary files are read from the root)', any('dictionary on the card root' in n for n in r.notes()) and not any('no dictionary' in n for n in r.notes())
-          and not raw and r.s('root_opens') > 10 and (r.said('long press within') or r.said('on air at the next slot')), 'root opens %s, raw rows %d, notes %s' % (r.s('root_opens'), len(raw), r.notes()[:3]))
+          and not raw and r.s('root_opens') > 10 and (r.said('MODE > hold FT8 (red), 2 min') or r.said('on air at the next slot')), 'root opens %s, raw rows %d, notes %s' % (r.s('root_opens'), len(raw), r.notes()[:3]))
     r = Run('d2_dict_apps', '', wav=MIX, tail=30)
     check('D2 dictionary in the app folder only (the old layout): still used, nothing read from the root but the one probe',
           not any('dictionary on the card root' in n for n in r.notes()) and not any('no dictionary' in n for n in r.notes()) and r.s('root_opens') == 0, r.notes()[:3])

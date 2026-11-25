@@ -145,18 +145,31 @@ class Sim:
         self.dir = sddir
         self.d, self.popups, self.panel, self.stat, self.over40 = [], [], {}, {}, 0
         self.recs = []                           # DECODE records: dict(time, snr, freq, mark, lines)
+        # Since 24 Nov 2026 a DECODE row is "HHMM [m ]TEXT" (m: = > ?) - no SNR, no audio offset.  The simulator gives both
+        # on a line "Q <snr> <freq>" just before the first row of each decoded text (JS8_HOST_DECMETA, never on the screen):
+        # a first row without its Q line, or a Q line not followed by a first row, is a record with mark '?Q' (unexpected).
+        meta = None
         for l in self.out.splitlines():
-            if l.startswith('D '):
+            if l.startswith('Q '):
+                if meta is not None:
+                    self.recs.append({'time': '?', 'snr': 0, 'freq': 0, 'mark': '?Q', 'lines': ['Q line without its row']})
+                q = l.split()
+                meta = (int(q[1]), int(q[2]))
+            elif l.startswith('D '):
                 s = l[2:]
                 self.d.append(s)
                 if len(s) > 40:
                     self.over40 += 1
-                m = re.match(r'^(\d{4}) ([+-]\d\d) ([ \d]{4}) (.*)$', s)
-                if m:
-                    rest, mark = m.group(4), ''
-                    if rest[:2] in ('= ', '> '):
+                m = re.match(r'^(\d{4}) (.*)$', s)
+                if m and meta is not None:
+                    rest, mark = m.group(2), ''
+                    if rest[:2] in ('= ', '> ', '? '):
                         mark, rest = rest[0], rest[2:]
-                    self.recs.append({'time': m.group(1), 'snr': int(m.group(2)), 'freq': int(m.group(3)), 'mark': mark, 'lines': [rest]})
+                    self.recs.append({'time': m.group(1), 'snr': meta[0], 'freq': meta[1], 'mark': mark, 'lines': [rest]})
+                    meta = None
+                elif meta is not None:
+                    self.recs.append({'time': '?', 'snr': 0, 'freq': 0, 'mark': '?Q', 'lines': [s]})
+                    meta = None
                 elif s.startswith(' ' * 5) and self.recs:
                     self.recs[-1]['lines'].append(s[5:])
                 else:
@@ -297,19 +310,21 @@ def verify_run(tag, sim, exp_frames, exp_msgs, mycall='OK1BT', nodict=False, t0=
             text = '#' + chars12(f['hex']) if raw else f['text']
             if f['single'] and f['tome'] and mycall:
                 continue                          # shown only as the '>' message line
-            last = take(hms(f['period'], t0)[:4], f['f0'], f['snr'], '', wrap(text, 26))
+            last = take(hms(f['period'], t0)[:4], f['f0'], f['snr'], '', wrap(text, 35))
         if m['frames'] > 1 or (m['tome'] and mycall):
             if nodict and any(x['type'] in (6, 7) for x in exp_frames if x['f0'] == m['f0'] and m['period'] - m['frames'] < x['period'] <= m['period']):
                 continue                          # text of the message is not recoverable without the dictionary
-            k = take(hms(m['period'], t0)[:4], m['f0'], m['snr'], '>' if (m['tome'] and mycall) else '=', wrap(m['text'], 24))
+            k = take(hms(m['period'], t0)[:4], m['f0'], m['snr'], '>' if (m['tome'] and mycall) else '=', wrap(m['text'], 33))
             if last is not None and k >= 0 and k != last + 1 and m['frames'] > 1:
                 order_bad.append(m['text'])
     extra = [recs[k] for k in range(len(recs)) if not used[k]]
     if nodict:                                    # without the dictionary only message lines with "{?}" words may be extra
-        extra = [r for r in extra if not (r['mark'] in ('=', '>') and any('{?}' in l for l in r['lines']))]
+        extra = [r for r in extra if not (r['mark'] in ('=', '>', '?') and any('{?}' in l for l in r['lines']))]   # ('?' wins over '>' since 25 Nov 2026)
     if True:
         for r in extra:
             bad.append('unexpected DECODE line: %s %+03d %4d %s%s' % (r['time'], r['snr'], r['freq'], r['mark'] + ' ' if r['mark'] else '', ' / '.join(r['lines'])))
+    # (since 24 Nov 2026 the rows are "HHMM [m ]TEXT": freq and SNR of each row come from the bench's Q line, tests/js8sim.c;
+    #  the name of this check is kept for tools/e2e_compare.py)
     check(tag + ': DECODE screen shows exactly the sent frames and messages (text exact with HEARTBEAT shown as HB, time HHMM, freq +-1 Hz, SNR +-3 dB; the seconds are checked in JS8LOG.TXT)', not bad,
           '%d DECODE records' % len(recs) if not bad else '; '.join(bad[:6]))
     check(tag + ': a complete message line directly follows its last frame line', not order_bad, '; '.join(order_bad))

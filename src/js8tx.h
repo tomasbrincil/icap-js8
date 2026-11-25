@@ -17,7 +17,10 @@
  *        most one granted transmission, only if nothing was armed or on the air when the tap was made; the loader decides):
  *        used only for a message of ONE frame with nothing else queued, the beacon not armed and txtap=1 (default); or
  *        (b) the beacon armed by the owner (red frame: "@TX" beacon=1 owner=0) - every other message waits for it
- *        ("TX 3 frames: long press within 2 min").  The arming must have been SEEN to happen while this app runs: a
+ *        ("3 parts: MODE > hold FT8 (red), 2 min").  The owner sets the frame in the radio's MODE menu, not on the main
+ *        screen: tap the mode tile -> MODE menu -> hold FT8 = red frame (hold longer = green frame, CQ; rule 8); the same
+ *        again = off.  On the DECODE screen a JS8 frame is called a "part" (the word "frame" there is the red / green
+ *        frame); notes, logs and this code keep "frame".  The arming must have been SEEN to happen while this app runs: a
  *        beacon=1 (or cq=1) that is already there at the first read does not count until beacon=0 (cq=0) was read once,
  *        and neither does one that "comes back" when an owner abort clears with the beacon still armed (O4, 24 Nov 2026).
  *        A grant (r >= 0) the app does not use - a later period, a refusal - is handed back at once with tx_end (S4).
@@ -28,13 +31,13 @@
  *      20), messages waiting (JS8TX_QMAX), life of a request (txttl, default 120 s from the request / the last frame
  *      sent - an old request is dropped, not sent hours later).
  *   3a. ONE waiting message (review 24 Nov 2026): an ENT replaces every message of the owner that waits, also one that has
- *      sent a frame already (ONE row: "TX replaced: long press sends k frames" / "TX replaced: on air at the next slot"), also when
+ *      sent a frame already (ONE row: "replaced: MODE > hold FT8 (red), k parts" / "TX replaced: on air at the next slot"), also when
  *      its own text is then refused; the row counts what will really go.  Only the CQ frame of the
  *      green frame (rule 8) is not the owner's ENT and stays.  An ENT with nothing to send - under 2 characters, or one word
  *      that is a callsign (the untouched "<CALL> " of a tap on a station's row) - is refused ("TX: nothing to send - type a
  *      message") and changes nothing.
  *   4. Cancel and abort.  The ways to stop:
- *      - DISARM (long press of the mode tile again): seen within 0.5 s.  During a frame it ends the frame at once
+ *      - DISARM (red frame off: MODE menu -> hold FT8 again; row "red off = MODE > hold FT8 again"): seen within 0.5 s.  During a frame it ends the frame at once
  *        (io->tx_end) and clears the whole queue.  Outside a frame it drops every message of the owner - also one held
  *        after a PERM and a strategy-B hold (S1, 24 Nov 2026; row "TX: red frame off - message dropped", note "... waiting
  *        messages dropped").  So: confirm, arm, disarm = nothing further goes out, whatever comes later.
@@ -64,7 +67,9 @@
  *      TXTEST ON (txtest=); another tx* key with a bad or
  *      out-of-range value keeps its default; an unknown tx* key (a typing error) is refused.  Each case is one note
  *      after the start.  Key names are case-insensitive (the shell lower-cases them).
- *   8. CQ by the green frame.  The SDK: beacon and CQ are never armed together, and icap_tx_begin answers PERM while
+ *   8. NO CQ (owner decision 24 Nov 2026; until then: CQ by the green frame, below).  An arming of the green frame
+ *      queues nothing and is answered with the row "green not used - hold FT8 again"; the app never asks @QTXC.
+ *      Former rule, kept for the record:  The SDK: beacon and CQ are never armed together, and icap_tx_begin answers PERM while
  *      the beacon is not armed - so a CQ cannot go through the beacon path.  It goes through the loader's CQ path
  *      "@QTXC" instead (granted only while the owner has CQ armed; the loader keys the period itself, the app writes
  *      the audio and nothing else).  Each new arming of CQ (cq 0 -> 1, seen to happen) queues exactly ONE frame
@@ -203,7 +208,7 @@ typedef struct {
     uint32_t t_lost;                                      /* U2: when a message of the owner last expired / was dropped by a disarm, 0 = not lately */
     uint8_t  ab0;                                         /* an owner abort was seen: an arming counts only after beacon=0 was read again (O4) */
     uint8_t  arm_new, hb_said;                            /* a new arming to report in js8tx_poll / its HB row was given */
-    uint8_t  last_src;                                    /* src of the last message that went out whole (the shell's row after it, U4) */
+    uint8_t  last_src;                                    /* src of the last message that went out whole (its "SENT" / "HB SENT" row, U4) */
     char     grid[5];
     char     preset[JS8TX_PRESETS][JS8TX_TEXT + 1];
     /* state */
@@ -246,8 +251,9 @@ const char *js8tx_err(int code);
 int  js8tx_check(js8tx_t *t, const char *text);
 /* ENT on the radio's keyboard: the owner saw exactly this text and confirmed it.  Queued; a one-frame message with nothing
  * else waiting is sent on the loader's tap credit when it grants (*granted = 1), everything else waits for the beacon.
- * Frames (> 0) or JS8TX_E_*.  Says what happens ("TX: on air at the next slot (tap)", "TX queued: arm beacon to send k
- * frames", "TX refused: ...") through io->say. */
+ * Frames (> 0) or JS8TX_E_*.  Says what happens ("TX: on air at the next slot (tap)", "3 parts: MODE > hold FT8 (red),
+ * 2 min", "TX refused: ...") through io->say.  js8tx_run says "SENT: <text>" (after an HB of txhb=: "HB SENT, next in N
+ * min") when a message has gone out whole, and while the beacon is armed also "red frame off to tap again". */
 int  js8tx_send(js8tx_t *t, const char *text, int *granted);
 /* Item i the terminal can load (0 HB, 1 CQ, 2..5 presets tx1..tx4, 6.. prepared replies) -> text; 0 = none. */
 int  js8tx_item(const js8tx_t *t, int i, char *o);

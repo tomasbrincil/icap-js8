@@ -21,13 +21,14 @@
  * max 43"; a prepared reply, a terminal text: "TX: text over 43 characters").  A tap while a tap grant is open and not yet keyed
  * gives it back ("TX: cancelled before the slot", S3); a tap while the owner abort is latched is refused ("TX: aborted - restart
  * the app to send", S2); a tap is ignored while a beacon transmission is due within 4 s (on the air the app does not poll at
- * all); a second tap before the keyboard opened retargets it.  Taps are not delivered while the beacon is armed: after a frame
- * under it the row "TX done - red frame off to tap again" (after an HB of txhb=: "HB sent, next in N min - red off stops").
+ * all); a second tap before the keyboard opened retargets it.  Taps are not delivered while the beacon is armed (red frame: tap
+ * the mode tile -> MODE menu -> hold FT8; longer = green): a message that went out whole is shown as "SENT: <text>" (after an HB
+ * of txhb=: "HB SENT, next in N min"), and while the red frame is still on the row "red frame off to tap again" follows.
  * ENT with ...                                happens
  *   a text                                    js8tx_send: it REPLACES the owner's message that waits (ONE waiting message:
  *                                             "TX: replaced the waiting message" / "TX: dropped the message in progress");
  *                                             ONE frame -> on the loader's tap credit ("@QTX", the tap on the row; no
- *                                             arming); else queued: "TX queued: arm beacon to send k frames"
+ *                                             arming); else queued: "3 parts: MODE > hold FT8 (red), 2 min"
  *   only a callsign, the untouched "<CALL> ", "TX: nothing to send - type a message" - nothing changes
  *     or under 2 characters
  *   M1..M8 / P1..P4 alone                     the keyboard opens again with keyer memory n (JS8MEM.TXT of MEM.APP, read in the
@@ -36,7 +37,7 @@
  *   an empty text, "X" or "CANCEL"            the queue is cleared ("TX: cancelled, queue cleared") - the cancel; also
  *     (also "<CALL> X" / "<CALL> CANCEL")     after the call the app filled in (U3)
  *   a byte outside 32..126                    refused ("TX refused: unusual character"), the next tap reopens it (S5)
- * EXIT: "TX: keyboard closed, nothing sent" / "TX: keyboard closed, 3 frames wait" (U5).
+ * EXIT: "TX: keyboard closed, nothing sent" / "TX: keyboard closed, 3 parts wait" (U5; a JS8 frame is a "part" on the screen).
  * The keyboard holds 43 characters: what goes out is never more than the owner saw.
  *
  * The keyboard (705J 1.40 / SQ6EMM v14 J ONLY; verified on the radio 24 Nov 2026 with ../kbd.c, also from the DECODE screen of
@@ -49,7 +50,7 @@
  *   (note, one row; S6 24 Nov 2026)
  *   cb runs on the GUI task at ENT: copy the text, *action = 4 (commit, back), return 1
  *   open: the halfword at 0x203e84c9 (the open menu, BI1BIF emulator) reads 349; another value twice in a row = the keyboard
- *   was left without ENT (EXIT): nothing is sent.  Not 349 within 300 ms of the open (S8): "KBD: cannot see EXIT - finish with
+ *   was left without ENT (EXIT): nothing is sent.  Not 349 within 300 ms of the open (S8): "KBD: return arrow not seen - use
  *   ENT", the keyboard is never taken as closed by the menu id, and a stop request closes it and waits 2 s.
  *   The menu id is also read at the tap: the keyboard opens only if it is the same at open time ("TX: screen changed - tap
  *   again", S7), and only from the main loop - never inside the decoder's abort callback (a tap during a decode opens after it)
@@ -189,7 +190,7 @@ static COLD void kbd_exit(void)
     int i, k = 0;
     for (i = 0; i < txq.qn; i++) if (txq.q[i].src != JS8TX_SRC_CQ) k += txq.q[i].n - txq.q[i].k;
     if (!k) { kbd_lost("TX: keyboard closed, nothing sent"); return; }
-    q = num(cat(l, "TX: keyboard closed, "), k, 0, ' '); cat(q, k == 1 ? " frame waits" : " frames wait");
+    q = num(cat(l, "TX: keyboard closed, "), k, 0, ' '); cat(q, k == 1 ? " part waits" : " parts wait");
     kbd_lost(l);
 }
 /* U6: a continuation row ("     TEXT") takes the call of the row above it.  The rows the app printed last: hash -> call */
@@ -244,16 +245,14 @@ static COLD int mem_get(int m, char *o)
     return o[0] != 0;
 }
 
-/* the station of a decoded DECODE row "HHMM sNN FFFF [= |> ]CALL: ...", or 0 */
+/* the station of a decoded DECODE row "HHMM [= |> ]CALL: ...", or 0.  (A "?" row - checksum not verified - and a status row
+ * such as "HHMM TX <f0> k/n <text>" give none.) */
 static int row_call(const char *row, char *call)
 {
     int i;
     for (i = 0; i < 4 && row[i] >= '0' && row[i] <= '9'; i++) ;
-    if (i < 4 || row[4] != ' ' || (row[5] != '+' && row[5] != '-') || row[6] < '0' || row[6] > '9') return 0;
-    row += 8;
-    while (*row == ' ') row++;
-    while (*row >= '0' && *row <= '9') row++;    /* the frequency */
-    while (*row == ' ') row++;
+    if (i < 4 || row[4] != ' ') return 0;
+    row += PFX_W;
     if ((row[0] == '=' || row[0] == '>') && row[1] == ' ') row += 2;
     for (i = 0; i < JS8_CALL_MAX - 1 && row[i] > ' ' && row[i] != ':'; i++) call[i] = row[i];
     call[i] = 0;
@@ -419,7 +418,7 @@ static COLD void kbd_poll_(uint32_t now, int inmain)
     int fd, n, v = 0, i;
     kbd_poll = now;
     if (kbd_state == 2) {                        /* open: left without ENT? */
-        static const char w[] = "KBD: keyboard closed by the app", nw[] = "KBD: cannot see EXIT - finish with ENT";
+        static const char w[] = "KBD: keyboard closed by the app", nw[] = "KBD: return arrow not seen - use ENT";
         unsigned id = KBD_MENU();
         if (id == KBD_MENU_ID) { kbd_gone = 0; if (kbd_noid == 2) kbd_noid = 0; }
         else if (kbd_noid == 2) { if (now - kbd_t >= 300u) { kbd_noid = 1; note(nw); krow(nw); } }   /* S8 */

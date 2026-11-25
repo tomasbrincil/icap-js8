@@ -154,7 +154,7 @@ const char *js8tx_err(int code)
     case JS8TX_E_GRID: return "set the locator (GPS / loc=)";
     case JS8TX_E_TEXT: return "bad text";
     case JS8TX_E_ENC:  return "text not encodable";
-    case JS8TX_E_LONG: return "too many frames";
+    case JS8TX_E_LONG: return "too many parts";
     case JS8TX_E_FULL: return "queue full";
     case JS8TX_E_SESS: return "session cap reached";
     case JS8TX_E_TEST: return "TXTEST: one heartbeat only";
@@ -164,6 +164,9 @@ const char *js8tx_err(int code)
     default:           return "error";
     }
 }
+
+/* how the owner switches the red frame off (the radio: tap the mode tile -> MODE menu -> hold FT8; longer = green) */
+#define RED_OFF "red off = MODE > hold FT8 again"
 
 /* what changes what goes on the air: a note (app window, log) AND a DECODE row (U1, 24 Nov 2026) */
 static void tell(js8tx_t *t, const char *s) { IO->note(s); IO->say(s, 0); }
@@ -301,13 +304,16 @@ int js8tx_send(js8tx_t *t, const char *text, int *granted)
         return n;
     }
     /* (b) everything else waits for the red frame.  ONE row says how many frames will go (U5): n is the whole queue now (the
-     * replaced message is gone; a CQ frame is never waiting together with a beacon message) */
-    if (t->armed) q = cp(l, s ? "TX replaced: sending " : "TX queued: sending ");
-    else if (s) q = cp(l, "TX replaced: long press sends ");
-    else q = cp(l, "TX ");
-    q = un(q, (unsigned)n); q = cp(q, n == 1 ? " frame" : " frames");
-    if (!t->armed && !s) {                             /* "TX 3 frames: long press within 2 min" (txttl) */
-        q = cp(q, ": long press within ");
+     * replaced message is gone; a CQ frame is never waiting together with a beacon message).  On the screen a frame is a
+     * "part" ("frame" there is the red / green frame of the radio: tap the mode tile -> MODE menu -> hold FT8 = red):
+     *   "3 parts: MODE > hold FT8 (red), 2 min" (txttl) / "replaced: MODE > hold FT8 (red), 3 parts" /
+     *   armed: "TX queued: sending 3 parts" / "TX replaced: sending 3 parts"          (all <= 40 characters) */
+    if (t->armed) { q = cp(l, s ? "TX replaced: sending " : "TX queued: sending "); q = un(q, (unsigned)n); }
+    else if (s) { q = cp(l, n < 10 ? "replaced: MODE > hold FT8 (red), " : "replaced: MODE > hold FT8 red, "); q = un(q, (unsigned)n); }
+    else q = un(l, (unsigned)n);
+    q = cp(q, n == 1 ? " part" : " parts");
+    if (!t->armed && !s) {
+        q = cp(q, ": MODE > hold FT8 (red), ");
         q = un(q, t->ttl_s % 60u ? t->ttl_s : t->ttl_s / 60u); cp(q, t->ttl_s % 60u ? " s" : " min");
     }
     IO->say(l, 0);
@@ -364,18 +370,13 @@ int js8tx_wave(txs_mfsk_t *w, uint8_t tones[79], const uint8_t frame[JS8_FRAME_B
 }
 
 /* ---- loader state */
-static void cq_armed(js8tx_t *t)                       /* a new arming of CQ: the one CQ frame it stands for (rule 8) */
+static void cq_armed(js8tx_t *t)                       /* a new arming of CQ (green frame): sends NOTHING (rule 8) */
 {
-    char l[48], *q;
-    int r;
+    /* Owner decision 24 Nov 2026: no CQ.  The green frame is not used by the app; it queues nothing and asks for no
+     * grant.  (The radio itself shows the green frame while a one-part reply on the tap credit is on the air - that
+     * is not an arming the app sees here.)  The CQ path below (JS8TX_SRC_CQ, @QTXC) stays unused. */
     if (!t->enable || t->dead) return;
-    if (t->test) { tell(t, "TXTEST: green frame ignored"); return; }
-    if (t->grant) { tell(t, "TX: CQ armed while a grant is open - ignored"); return; }
-    item_hb(t, l, 1);
-    r = req(t, l, JS8TX_SRC_CQ);
-    if (r) { t->n_refused++; q = cp(l, "TX: CQ refused: "); cp(q, js8tx_err(r)); tell(t, l); return; }
-    t->q[0].busy = 0; t->t_next = IO->ticks();
-    tell(t, "TX: CQ armed - one CQ frame");
+    tell(t, "green not used - hold FT8 again");
 }
 static void poll_tx(js8tx_t *t, int quiet)
 {
@@ -389,7 +390,7 @@ static void poll_tx(js8tx_t *t, int quiet)
         armed = fld(b, "beacon", 0) > 0;
         if (!armed) t->seen0 = 1, t->ab0 = 0;
         else if (!t->seen0) {
-            /* armed before this app ever saw the beacon disarmed: that is not the owner's long press (the loader arms
+            /* armed before this app ever saw the beacon disarmed: that is not the owner's setting in the MODE menu (the loader arms
              * by itself at app start when the app's .CFG - for a file named FT8.APP: FT8.CFG - has beacon=1) */
             armed = 0;
             if (!quiet && !t->said_stale) { t->said_stale = 1; tell(t, "TX: red frame at start - off, on again"); }
@@ -425,7 +426,7 @@ static void poll_tx(js8tx_t *t, int quiet)
     t->armed = (uint8_t)armed; t->owner = (uint8_t)owner;
     if (!cq && t->cq && !t->in_run) {                  /* CQ disarmed: its frame is not sent */
         for (i = 0, had = 0; i < t->qn; i++) if (t->q[i].src == JS8TX_SRC_CQ) { q_drop(t, i--); had = 1; }
-        if (had) tell(t, "TX: CQ disarmed, CQ frame dropped");
+        if (had) tell(t, "TX: green frame off - CQ dropped");
     }
     if (cq && !t->cq) { t->cq = 1; if (!t->in_run) cq_armed(t); }   /* (an arming seen during a frame queues nothing) */
     t->cq = (uint8_t)cq;
@@ -481,7 +482,7 @@ int js8tx_poll(js8tx_t *t)
             t->t_hb = now ? now : 1u;
             if (req(t, h, JS8TX_SRC_HB) == JS8TX_OK) {
                 IO->note("TX beacon: HB queued");
-                if (!t->hb_said) { t->hb_said = 1; q = un(cp(l, "TX: HB every "), t->hb_min); cp(q, " min - red off stops"); IO->say(l, 0); }
+                if (!t->hb_said) { t->hb_said = 1; q = un(cp(l, "TX: HB every "), t->hb_min); cp(q, " min"); IO->say(l, 0); IO->say(RED_OFF, 0); }
             } else tell(t, "TX beacon: HB refused");
         }
         if (t->arm_new && !t->in_run) {                /* U4: an arming that sends nothing is said so */
@@ -489,7 +490,7 @@ int js8tx_poll(js8tx_t *t)
             if (!t->qn && t->armed) {
                 if (t->hb_min && t->hb_arm && !t->test && !t->owner) {   /* (a re-arming within txhb minutes of the last HB) */
                     uint32_t m = (uint32_t)t->hb_min - (now - t->t_hb) / 60000u;
-                    q = un(cp(l, "TX: next HB in "), m); cp(q, " min - red off stops"); IO->say(l, 0);
+                    q = un(cp(l, "TX: next HB in "), m); cp(q, " min"); IO->say(l, 0); IO->say(RED_OFF, 0);
                 } else tell(t, "TX: red frame on, nothing to send");
             }
         }
@@ -505,7 +506,7 @@ int js8tx_poll(js8tx_t *t)
 #endif
         if (t->grant && (int32_t)(now - t->t_slot) > 300) {    /* the granted slot went by unused: the beacon path is left */
             drop_grant(t);
-            tell(t, "TX: tap slot missed - arm beacon");
+            tell(t, "TX: slot missed, MODE > hold FT8 (red)");
         }
     }
     if (!t->grant && t->qn && t->q[0].src == JS8TX_SRC_CQ && t->cq && !t->owner && (int32_t)(now - t->t_next) >= 0) cq_ask(t);
@@ -553,7 +554,7 @@ int js8tx_run(js8tx_t *t)
         r = IO->tx_begin();
         if (r == JS8TX_L_PERM) {                       /* not armed after all / the loader's own limit: wait for a NEW arming */
             m->hold = 1; m->bh = 0; m->gen = t->gen;
-            q = cp(l, "TX refused: arm needed for frame "); kofn(q, m);
+            q = kofn(cp(l, "TX refused: part "), m); cp(q, " - red frame again");   /* (<= 40 characters: 12/12) */
             tell(t, l);
             return 0;
         }
@@ -611,7 +612,7 @@ int js8tx_run(js8tx_t *t)
         if (rc != 2) poll_tx(t, 0);
         /* poll_tx has cleared the queue (and said so) if the loader reports an owner abort; otherwise: */
         if (rc == 2 && t->qn && !t->owner) {          /* (U1: a disarm that cut a message is shown on the DECODE screen too) */
-            IO->say(cq ? "TX: CQ disarmed, CQ frame dropped" : "TX: red frame off - message dropped", 0);
+            IO->say(cq ? "TX: green frame off - CQ dropped" : "TX: red frame off - message dropped", 0);
             if (!cq) t->t_lost = IO->ticks() | 1u;
         }
         if (rc == 3) IO->say("TX: cancelled before the slot", 0);
@@ -627,7 +628,15 @@ int js8tx_run(js8tx_t *t)
         /* 24 Nov 2026 on the radio: after a confirmed message the loader showed a fresh arming and HB started at once; an owner
          * message that just went out blocks the HB start like a dropped one (U2) */
         if (m->src != JS8TX_SRC_HB && m->src != JS8TX_SRC_CQ) t->t_lost = IO->ticks() | 1u;
-        q = cp(l, "TX done: "); cpn(q, m->text, 30); drop_head(t, l);
+        /* the DECODE screen (owner decision 24 Nov 2026): "SENT: <text>" (cut to the 40 characters of a row), after an HB
+         * of txhb= "HB SENT, next in N min"; taps are not delivered while the beacon is armed, so then also
+         * "red frame off to tap again".  The note "TX done: <text>" (app window + log) stays. */
+        char d[44];
+        if (m->src == JS8TX_SRC_HB) { q = un(cp(d, "HB SENT, next in "), t->hb_min); cp(q, " min"); }
+        else { q = cpn(cp(d, "SENT: "), m->text, 40 - 6); while (q[-1] == ' ') *--q = 0; }   /* (the text has no trailing blank) */
+        q = cp(l, "TX done: "); cpn(q, m->text, 30); drop_head(t, l);   /* (m is the next message after this) */
+        IO->say(d, 0);
+        if (t->armed) IO->say("red frame off to tap again", 0);
     }
     /* strategy B = one frame per arming: whatever is at the head of the queue now - the rest of this message or the
      * next message - waits; since 24 Nov 2026 a disarm drops it (confirm, arm, disarm = nothing further), so under
@@ -645,7 +654,7 @@ void js8tx_status(const js8tx_t *t, char *o)
     o = cp(o, t->test ? "TXTEST " : "TX ");
     if (!t->enable) { cp(o, "off (tx=0)"); return; }
     if (t->dead) { cp(o, "n/a"); return; }
-    o = cp(o, t->owner ? "ABORTED" : t->armed ? "ARMED" : t->cq ? "CQ ARMED" : t->have_tx ? "disarmed" : "no @TX");
+    o = cp(o, t->owner ? "ABORTED" : t->armed ? "ARMED" : t->cq ? "GREEN unused" : t->have_tx ? "disarmed" : "no @TX");
     if (t->qn) {
         const js8tx_msg_t *m = &t->q[0];
         o = cp(o, " q"); o = un(o, t->qn); *o++ = ' '; o = kofn(o, m);

@@ -206,6 +206,11 @@ SOFTWARE.
   only compared, never executed from this repository.
   "Icom" and "IC-705" are trademarks of Icom Inc.; this project is independent and
   not affiliated with or endorsed by Icom.
+- **Screen pictures.** The photos in `docs/img/` show the author's own radio. The
+  screen pictures of the operator's manual (`docs/manual/*.pdf`) and of its
+  preview `docs/img/manual-preview*.jpg` are renderings of the IC-705 user interface,
+  made by running the radio's firmware in BI1BIF's emulator on the author's computer;
+  neither the firmware nor the emulator's firmware image is part of this repository.
 - **No custom firmware.** The ICAP loader the app runs under is part of the custom
   firmware by Dawid SQ6EMM (<https://sq6emm.github.io/icom-custom-firmware/>) and
   is obtained from there.

@@ -133,11 +133,18 @@ static int unit(void)
     CHECK(r == 0 && M.begins == 0 && M.samples == 0, "U2 human request but NOT armed, 60 s: request rc %d, tx_begin calls %d, samples %ld", r, M.begins, M.samples);
     M.armed = 1; run_ms(40000);
     CHECK(M.ntx == 1 && M.lens[0] == 101120 && slot_ok(0) && M.begins == 1 && T.qn == 0, "U2 then armed: 1 frame of %ld samples at slot+%u ms, tx_begin calls %d", M.lens[0], M.starts[0] % 15000u, M.begins);
+    CHECK(said("SENT: HB JO70") && said("red frame off to tap again") && !said("TX done"),
+          "U2 the message went out whole: rows \"SENT: HB JO70\" and (still armed, taps are not delivered) \"red frame off to tap again\"");
     run_ms(600000);
     CHECK(M.ntx == 1 && M.begins == 1, "U2 nothing is repeated afterwards (10 min armed): transmissions %d, tx_begin calls %d", M.ntx, M.begins);
     /* U3 strategy A */
     fresh("OK1BT", "JO70"); M.armed = 1; r = js8tx_request(&T, L3); n3 = T.qn ? T.q[0].n : 0; run_ms(120000);
     CHECK(r == 0 && n3 >= 3 && M.ntx == n3 && M.begins == n3, "U3 strategy A: %d-frame message -> %d transmissions, %d tx_begin calls", n3, M.ntx, M.begins);
+    { int ns = 0, nr = 0, last = -1; for (int i = 0; i < M.nsaid; i++) { if (!strncmp(M.said[i], "SENT: ", 6)) { ns++; last = i; } if (!strcmp(M.said[i], "red frame off to tap again")) nr++; }
+      CHECK(ns == 1 && nr == 1 && last >= 0 && !strcmp(M.said[last], "SENT: Q7AB MSG HELLO THERE HOW ARE YOU") && last + 1 < M.nsaid && !strcmp(M.said[last + 1], "red frame off to tap again"),
+            "U3 ONE row \"SENT: <text>\" (the 40 characters of a row: \"%s\") after the LAST part only, then \"red frame off to tap again\"", last >= 0 ? M.said[last] : "-"); }
+    fresh("OK1BT", "JO70"); M.armed = 1; r = js8tx_request(&T, "Q7AB MSG HELLO THERE HOW ARE YOUR FRIEND 73"); run_ms(120000);
+    CHECK(r == 0 && M.ntx >= 3 && !strcmp(M.said[M.nsaid - 2], "SENT: Q7AB MSG HELLO THERE HOW ARE YOUR"), "U3 a text of 43 characters: \"SENT: \" + the text cut to the 40 characters of a row, no trailing blank (\"%s\")", M.nsaid > 1 ? M.said[M.nsaid - 2] : "-");
     { int ok = 1; for (int i = 0; i < M.ntx; i++) if (!slot_ok(i) || M.lens[i] != 101120 || (i && M.starts[i] - M.starts[i - 1] != 15000u)) ok = 0;
       CHECK(ok, "U3 strategy A: consecutive slots, each 101120 samples (starts %u %u %u ...)", M.starts[0], M.starts[1], M.starts[2]); }
     /* U4 strategy B (since the review of 24 Nov 2026: a disarm drops the held rest - confirm, arm, disarm = nothing further) */
@@ -150,7 +157,7 @@ static int unit(void)
     CHECK(M.ntx == 1 && M.begins == 1, "U4 strategy B: %d more armings -> nothing more (transmissions %d, tx_begin calls %d)", n3 - 1, M.ntx, M.begins);
     /* U5 strategy A against a loader that refuses consecutive slots */
     fresh("OK1BT", "JO70"); M.armed = 1; M.once = 1; js8tx_request(&T, L3); run_ms(110000);
-    CHECK(M.ntx == 1 && M.begins == 2 && T.q[0].hold == 1 && noted("arm needed for frame 2/"), "U5 strategy A, loader refuses the next slot (PERM): held, tx_begin calls %d (1 ok + 1 refused, no retry storm)", M.begins);
+    CHECK(M.ntx == 1 && M.begins == 2 && T.q[0].hold == 1 && noted("TX refused: part 2/") && noted(" - red frame again") && said("TX refused: part 2/"), "U5 strategy A, loader refuses the next slot (PERM): held, tx_begin calls %d (1 ok + 1 refused, no retry storm)", M.begins);
     M.armed = 0; run_ms(3000); M.spent = 0; M.armed = 1; run_ms(20000);
     CHECK(M.ntx == 1 && T.qn == 0, "U5 (S1 24 Nov 2026) the disarm drops the held message: nothing more at a new arming (transmissions %d)", M.ntx);
     /* U6 BUSY */
@@ -229,18 +236,19 @@ static int unit(void)
       r = js8tx_send(&T, "HB JO70", &g); run_ms(40000);
       CHECK(r == 1 && g == 1 && M.qtx_ok == 1 && M.ntx == 1 && M.begins == 0 && said("on air at the next slot (tap)") && slot_ok(0) && M.lens[0] == 101120,
             "U14 one frame, the loader grants the tap credit: sent in the next slot WITHOUT arming (tx_begin %d, grants %d, frames %d)", M.begins, M.qtx_ok, M.ntx);
+      CHECK(said("SENT: HB JO70") && !said("red frame off"), "U14 ... row \"SENT: HB JO70\", no red-frame row (nothing is armed: the next tap is delivered)");
       run_ms(120000);
       CHECK(M.ntx == 1 && M.qtx == 1, "U14 ... and nothing more (the credit is asked once, frames %d)", M.ntx); }
     fresh("OK1BT", "JO70"); M.credit = 0; run_ms(1000);
     { int g = 1;
       r = js8tx_send(&T, "HB JO70", &g); run_ms(60000);
-      CHECK(r == 1 && g == 0 && M.ntx == 0 && T.qn == 1 && said("TX 1 frame: long press within 2 min"), "U14 the loader refuses the tap credit (PERM): queued, \"TX 1 frame: long press within 2 min\", nothing sent");
+      CHECK(r == 1 && g == 0 && M.ntx == 0 && T.qn == 1 && said("1 part: MODE > hold FT8 (red), 2 min"), "U14 the loader refuses the tap credit (PERM): queued, \"1 part: MODE > hold FT8 (red), 2 min\", nothing sent");
       M.armed = 1; run_ms(40000);
       CHECK(M.ntx == 1 && M.begins == 1, "U14 ... the red frame sends it (tx_begin %d)", M.begins); }
     fresh("OK1BT", "JO70"); M.credit = 1; js8tx_cfg(&T, "tx1=q7ab snr?"); run_ms(1000);
     { int g = 1; static const char *L3b = "Q7AB MSG HELLO THERE HOW ARE YOU";
       r = js8tx_send(&T, L3b, &g); run_ms(60000);
-      CHECK(r >= 3 && g == 0 && M.qtx == 0 && M.ntx == 0 && said("TX 3 frames: long press within 2 min"), "U14 a message of %d frames: never on the tap credit (asked %d times), waits for the beacon", r, M.qtx); }
+      CHECK(r >= 3 && g == 0 && M.qtx == 0 && M.ntx == 0 && said("3 parts: MODE > hold FT8 (red), 2 min"), "U14 a message of %d frames: never on the tap credit (asked %d times), waits for the beacon", r, M.qtx); }
     fresh("OK1BT", "JO70"); M.credit = 1; js8tx_cfg(&T, "txtap=0"); run_ms(1000);
     { int g = 1; r = js8tx_send(&T, "HB JO70", &g); run_ms(60000);
       CHECK(r == 1 && g == 0 && M.qtx == 0 && M.ntx == 0, "U14 txtap=0: one frame waits for the beacon too"); }
@@ -340,33 +348,19 @@ static int unit(void)
     CHECK(T.qn == 1 || M.ntx == 1, "U21 armed, three failed reads in a row: not taken as a disarm (message kept or sent)");
     run_ms(40000);
     CHECK(M.ntx == 1, "U21 ... the frame goes out (transmissions %d)", M.ntx);
-    /* U22 CQ by the green frame (rule 8): one CQ CQ CQ <grid> per arming, on the loader's CQ grant, never through tx_begin */
+    /* U22 NO CQ (rule 8, owner decision 24 Nov 2026): an arming of the green frame sends nothing, asks no @QTXC grant */
     fresh("OK1BT", "JO70"); run_ms(1000);
-    M.cq = 1; run_ms(40000);
-    CHECK(M.ntx == 1 && M.begins == 0 && M.qtxc_ok == 1 && M.nlogs == 1 && strstr(M.logs[0], "CQ CQ CQ JO70") && slot_ok(0) && M.lens[0] == 101120,
-          "U22 CQ armed: exactly one CQ frame on the @QTXC grant (tx_begin calls %d, grants %d, log %s)", M.begins, M.qtxc_ok, M.nlogs ? M.logs[0] : "-");
-    run_ms(120000);
-    CHECK(M.ntx == 1 && M.qtxc == 1, "U22 CQ left armed for 2 min: nothing more (transmissions %d, @QTXC asked %d times)", M.ntx, M.qtxc);
+    M.cq = 1; run_ms(120000);
+    CHECK(M.ntx == 0 && M.begins == 0 && M.qtxc == 0 && M.samples == 0 && T.qn == 0, "U22 green frame armed for 2 min: nothing sent, no @QTXC (transmissions %d, @QTXC %d)", M.ntx, M.qtxc);
+    CHECK(said("green not used - hold FT8 again"), "U22 ... the screen says \"green not used - hold FT8 again\"");
     M.cq = 0; run_ms(2000); M.cq = 1; run_ms(40000);
-    CHECK(M.ntx == 2, "U22 CQ disarmed and armed again: one more CQ frame (transmissions %d)", M.ntx);
-    fresh("OK1BT", "JO70"); M.cq = 1; js8tx_init(&T, &io, "OK1BT", 0, scratch); js8tx_cfg(&T, "tx=1"); js8tx_set_grid(&T, "JO70"); run_ms(60000);
-    CHECK(M.ntx == 0 && M.qtxc == 0, "U22 CQ already armed when the app starts: does not count (transmissions %d)", M.ntx);
-    M.cq = 0; run_ms(1000); M.cq = 1; run_ms(40000);
-    CHECK(M.ntx == 1, "U22 ... after it was seen disarmed once, the next arming counts (transmissions %d)", M.ntx);
-    fresh("OK1BT", "JO70"); run_ms(16000); M.cq = 1; run_ms(5000); M.cq = 0; run_ms(30000);
-    CHECK(M.ntx == 0 && M.samples == 0 && T.qn == 0 && noted("CQ disarmed"), "U22 CQ disarmed before its slot: the frame is dropped, no audio (samples %ld)", M.samples);
-    fresh("OK1BT", "JO70"); run_ms(1000); M.cq = 1; M.cqoff_at = 20000; run_ms(40000);
-    CHECK(M.ntx == 1 && M.lens[0] <= 20000 + 8 * (JS8TX_TXPOLL_MS + 60) && T.qn == 0 && noted("disarmed"), "U22 CQ disarmed during its frame (at sample 20000): the audio stops within %d ms (%ld samples)", JS8TX_TXPOLL_MS + 60, M.lens[0]);
+    CHECK(M.ntx == 0 && M.qtxc == 0, "U22 green off and on again: still nothing (transmissions %d)", M.ntx);
     fresh("OK1BT", "JO70"); js8tx_cfg(&T, "txtest=1"); run_ms(1000); M.cq = 1; run_ms(60000);
     CHECK(M.ntx == 0 && M.qtxc == 0, "U22 TXTEST: the green frame sends nothing");
     fresh("OK1BT", "JO70"); js8tx_cfg(&T, "tx=0"); run_ms(1000); M.cq = 1; run_ms(60000);
     CHECK(M.ntx == 0 && M.qtxc == 0, "U22 tx=0: the green frame sends nothing");
-    fresh("OK1BT", "JO70"); run_ms(1000); M.cq = 1; M.gate = 7; run_ms(200000);
-    CHECK(M.ntx == 0 && M.qtxc == JS8TX_BUSY_TRIES && T.qn == 0 && noted("gave up"), "U22 CQ, the gate refuses (BUSY): %d tries, one per period, then dropped", M.qtxc);
-    fresh("OK1BT", "JO70"); run_ms(1000); M.cq = 1; run_ms(16000); M.stopped = 1; run_ms(30000);
-    CHECK(M.samples == 0 || M.writes_after_stop == 0, "U22 a stop request ends the CQ frame too (writes after the stop %ld)", M.writes_after_stop);
-    fresh("OK1BT", "JO70"); run_ms(1000); M.cq = 1; run_ms(500); js8tx_abort(&T, "cancel"); run_ms(30000);
-    CHECK(M.ntx == 0 && M.samples == 0, "U22 the cancel gesture before the slot: no CQ frame (samples %ld)", M.samples);
+    fresh("OK1BT", "JO70"); run_ms(1000); { int g; js8tx_send(&T, "HB JO70", &g); } M.cq = 1; run_ms(60000);
+    CHECK(M.qtxc == 0 && (M.nlogs == 0 || !strstr(M.logs[0], "CQ CQ CQ")), "U22 a waiting one-part text and the green frame: no CQ ever (@QTXC %d)", M.qtxc);
     /* U23 JS8.CFG: TX off by default, case-insensitive keys, unknown tx* keys refused (review finding 5) */
     memset(&M, 0, sizeof M); M.clk = 1; M.fail_at = -1; M.stop_at = -1; M.now = 1000;
     js8tx_init(&T, &io, "OK1BT", 0, scratch); js8tx_set_grid(&T, "JO70");
@@ -383,6 +377,9 @@ static int unit(void)
     M.armed = 1; run_ms(25 * 60000);
     CHECK(M.ntx == 3 && M.nlogs == 3 && strstr(M.logs[2], "HB JO70") && M.starts[1] - M.starts[0] >= 600000u && M.starts[1] - M.starts[0] <= 615000u,
           "U25 armed for 25 min: HB at once and every 10 min (3 frames, %u s apart)", (M.starts[1] - M.starts[0]) / 1000u);
+    { int nh = 0, nr = 0; for (int i = 0; i < M.nsaid; i++) { if (!strcmp(M.said[i], "HB SENT, next in 10 min")) nh++; if (!strcmp(M.said[i], "red frame off to tap again")) nr++; }
+      CHECK(nh == 3 && nr == 3 && !said("SENT: HB") && said("TX: HB every 10 min") && said("red off = MODE > hold FT8 again"),
+            "U25 after each HB \"HB SENT, next in 10 min\" + \"red frame off to tap again\" (%d / %d), at the start \"TX: HB every 10 min\" + \"red off = MODE > hold FT8 again\"", nh, nr); }
     M.armed = 0; run_ms(60000); M.armed = 1; run_ms(60000);
     CHECK(M.ntx == 3, "U25 disarm + arm again 7 min after the last HB: no burst (frames %d)", M.ntx);
     run_ms(4 * 60000);
@@ -415,14 +412,14 @@ static int unit(void)
     fresh("OK1BT", "JO70"); run_ms(1000);
     { int g;
       js8tx_send(&T, L3, &g); M.nsaid = 0; r = js8tx_send(&T, "HB JO70", &g);
-      CHECK(r == 1 && T.qn == 1 && !strcmp(T.q[0].text, "HB JO70") && M.nsaid == 1 && said("TX replaced: long press sends 1 frame"),
+      CHECK(r == 1 && T.qn == 1 && !strcmp(T.q[0].text, "HB JO70") && M.nsaid == 1 && said("replaced: MODE > hold FT8 (red), 1 part"),
             "U27 3-frame message waiting, ENT on \"HB JO70\": replaced, ONE row says 1 frame (U5)");
       M.armed = 1; run_ms(120000);
       CHECK(M.ntx == 1 && M.nlogs == 1 && strstr(M.logs[0], "HB JO70"), "U27 armed: exactly that one frame goes (transmissions %d)", M.ntx); }
     fresh("OK1BT", "JO70"); M.once = 1; M.armed = 1; js8tx_request(&T, L3); run_ms(40000);
     { int g, k = T.qn ? T.q[0].k : -1;
       M.nsaid = 0; r = js8tx_send(&T, "HB JO70", &g);
-      CHECK(k == 1 && r == 1 && T.qn == 1 && M.nsaid == 1 && said("TX replaced: sending 1 frame"),
+      CHECK(k == 1 && r == 1 && T.qn == 1 && M.nsaid == 1 && said("TX replaced: sending 1 part"),
             "U27 a message that has sent frame 1 (held after a PERM, still armed) and a new ENT: the rest is dropped, ONE row says so");
       M.spent = 0; run_ms(120000);
       CHECK(M.ntx == 2 && strstr(M.logs[1], "HB JO70"), "U27 ... the next arming sends only the new frame (transmissions %d)", M.ntx); }
@@ -431,8 +428,8 @@ static int unit(void)
       CHECK(r == JS8TX_E_ENC && T.qn == 0 && said("TX: replaced the waiting message") && said("TX refused: text not encodable"),
             "U27 the ENT replaces the waiting message even when its own text is then refused (nothing waits)"); }
     fresh("OK1BT", "JO70"); run_ms(1000); M.cq = 1; M.gate = 7; run_ms(600);
-    { int g; int cq = T.qn == 1 && T.q[0].src == JS8TX_SRC_CQ; r = js8tx_send(&T, "HB JO70", &g);
-      CHECK(cq && r == 1 && T.qn == 2 && T.q[0].src == JS8TX_SRC_CQ, "U27 the CQ frame of the green frame is not the owner's ENT: it is not replaced"); }
+    { int g; r = js8tx_send(&T, "HB JO70", &g);
+      CHECK(T.qn <= 1 && (T.qn == 0 || T.q[0].src != JS8TX_SRC_CQ), "U27 with the green frame on, nothing but the owner's own text waits (no CQ frame)"); }
     /* U28 review 24 Nov 2026: the HB beacon starts only on an arming made with the queue empty */
     fresh("OK1BT", "JO70"); js8tx_cfg(&T, "txhb=10"); run_ms(1000);
     { int g; js8tx_send(&T, L3, &g); n3 = T.q[0].n;

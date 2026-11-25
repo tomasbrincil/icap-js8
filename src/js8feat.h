@@ -95,8 +95,9 @@ int  js8f_message(js8feat_t *f, const js8asm_msg_t *m, const char *mygrid, uint3
 const char *js8f_last_reply(const js8feat_t *f);
 /* Once per period: forget prepared replies older than JS8F_PREP_TTL. */
 void js8f_tick(js8feat_t *f, uint32_t now);
-/* One line of the DECODE screen ("HHMM sNN FFFF TEXT") -> the band activity list. */
-void js8f_band(js8feat_t *f, const char *decode_line);
+/* The first line of a decoded text on the DECODE screen ("HHMM TEXT") and its audio offset -> the band activity list
+ * ("HHMM FFFF TEXT"). */
+void js8f_band(js8feat_t *f, const char *decode_line, int freq);
 /* Row `row` of a view (0 = its title) into out (<= 40 characters + NUL).  Returns 1, or 0 when the view
  * has no such row (out = "").  The app window shows rows 0..7; INBOX and HEARD have more. */
 int  js8f_row(const js8feat_t *f, int view, int row, uint32_t now, char *out);

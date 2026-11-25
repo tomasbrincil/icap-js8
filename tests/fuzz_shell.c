@@ -658,8 +658,8 @@ int main(int argc, char **argv)
             check_logs();
             if (rnd() % 40 == 0) {                           /* the owner taps a row: one of ours, a decode, or anything */
                 static const char *rows[] = { "V> VIEW", "V> VIEW INBOX", "V> VIEW HEARD", "V> VIEW BAND", "V> VIEW STATUS", "V> VIEW X", "V> LOG Q1ABC", "V> LOG",
-                                              "V> LOG @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", "V> ", "V>", "", "235800 -11 1500 > Q1ABC: OK1BT MSG X",
-                                              "235800 -11 1500 DL/Q2ABC/P: @ALLCALL CQ", "235800 -11 1500 WWWWWWWWWWWWWWWWWWWWWWWWWWWWW:", "TX> HB", "SEND? X", "V> LOG DL/Q2ABC/P" };
+                                              "V> LOG @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", "V> ", "V>", "", "2358 > Q1ABC: OK1BT MSG X", "2358 ? Q1ABC: OK1BT MSG X", "     Q1ABC: X",
+                                              "2358 DL/Q2ABC/P: @ALLCALL CQ", "2358 WWWWWWWWWWWWWWWWWWWWWWWWWWWWW:", "2358 TX 1500 1/3 X: Y", "TX> HB", "SEND? X", "V> LOG DL/Q2ABC/P" };
                 char row[64]; int rn = 0;
                 if (rnd() % 4) snprintf(row, sizeof row, "%s", rows[rnd() % (sizeof rows / sizeof rows[0])]);
                 else { rn = (int)(rnd() % 64); for (int j = 0; j < rn; j++) row[j] = (char)(32 + rnd() % 95); row[rn] = 0; }
@@ -681,7 +681,8 @@ int main(int argc, char **argv)
             }
             if (rnd() % 400 == 0) g_full = !g_full && (rnd() & 1);
             if (rnd() % 3000 == 0) g_popbusy = !g_popbusy;
-            if (rnd() % 9000 == 0) { n_frames += 99000000u; n_periods += 9900000u; n_msgs += 99000000u; gaps += 99000000u; n_skipped += 990000u; n_tome += 990000u; }
+            if (rnd() % 9000 == 0) { g_pop_period_open = 0;   /* (the counters jump by millions of periods: the app's "one popup per period" starts anew) */
+                n_frames += 99000000u; n_periods += 9900000u; n_msgs += 99000000u; gaps += 99000000u; n_skipped += 990000u; n_tome += 990000u; }
         }
         for (uint32_t i = 0; i < wl; i++) if (work[i] != 0xC3) { FAIL("byte %u behind the shell's data region was overwritten", i); break; }
         g_full = 0; log_flush(&lg_frames); log_flush(&lg_msgs); snap_dirty = 1; snap_save();

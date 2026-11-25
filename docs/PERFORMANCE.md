@@ -5,7 +5,7 @@ Two kinds of numbers are in this file and they must not be mixed:
 - **Measured on the radio**: one Icom IC-705 (J version), firmware 20261119v14, 23 November 2026, live traffic on 7.078 MHz (40 m). These are the only numbers that say what the radio does.
 - **Simulator results**: the same C code compiled for a PC, fed with generated signals and with recordings. They say what the algorithm does. They say nothing reliable about the radio's speed.
 
-The numbers are those of release 0.1.0 (receive only). The decoder of 0.2.0 is the same source (`src/js8dec.c` unchanged); the transmit app `FT8.APP` builds its shell as Thumb code, and its decode times were not measured separately.
+The numbers are those of release 0.1.0 (receive only). The decoder of 0.2.0 and 0.2.1 is the same source (`src/js8dec.c` unchanged); the transmit app `FT8.APP` builds its shell as Thumb code, and its decode times were not measured separately.
 
 No side-by-side comparison with JS8Call has been made. Nothing here is a claim that this receiver hears what JS8Call hears.
 
@@ -61,8 +61,8 @@ For orientation only, PC times of the decoder alone (one core of an x86 PC, defa
 
 | Item | Value |
 |---|---|
-| `JS8.APP` (0.2.0, receive only) | 66,140 bytes; load size + bss 70,128 of 81,920 bytes |
-| `FT8.APP` (0.2.0, receive + transmit) | 75,240 bytes; load size + bss 79,536 of 81,920 bytes |
+| `JS8.APP` (0.2.1, receive only) | 66,064 bytes; load size + bss 70,056 of 81,920 bytes |
+| `FT8.APP` (0.2.1, receive + transmit) | 75,144 bytes; load size + bss 79,448 of 81,920 bytes |
 | `JS8.APP` of 0.1.0 | 59,344 bytes; load size + bss 64,128 of 81,920 bytes |
 | Decoder arena: peak / size | 177,840 / 189,824 bytes (PC run with the app's layout) |
 | Stack requested | 16 KiB |

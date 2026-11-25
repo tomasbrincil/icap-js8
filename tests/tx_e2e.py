@@ -32,6 +32,7 @@ import time
 import wave
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gestconv import conv, with_tx   # noqa: E402  (the gesture menu of 23 Nov 2026: owner scripts, tx=1)
+import decrows as DR                 # noqa: E402  (the decoded rows of a run: tests/decrows.py)
 from concurrent.futures import ThreadPoolExecutor
 
 HOME = os.path.expanduser('~')
@@ -350,7 +351,7 @@ def part_loopback():
     loopback('compound_directed', 'TX> Q7AB', 'q7ab snr -05', '9A/OK1BT: Q7AB SNR -05', call='9A/OK1BT', cfg='tx1=q7ab snr -05')
     loopback('compound_to', 'TX> Q7AB/QRP', 'q7ab/qrp ack', 'OK1BT: Q7AB/QRP ACK', cfg='tx1=q7ab/qrp ack', rxcall='Q7AB/QRP')
     # reply shortcut on a tapped decoded row (receive traffic: mix.wav has Q7AB's heartbeat at 1100 Hz, -11 dB)
-    r, rx = loopback('reply_snr', '', 'Q7AB SNR -11', 'OK1BT: Q7AB SNR -11', wav=MIX, owner='20 tap 1100 Q7AB;25 kbd Q7AB SNR -11;27 arm', tail=30)
+    r, rx = loopback('reply_snr', '', 'Q7AB SNR -11', 'OK1BT: Q7AB SNR -11', wav=MIX, owner='20 tap Q7AB: @HB;25 kbd Q7AB SNR -11;27 arm', tail=30)
     check('reply_snr: the tap on the decoded row of Q7AB opened the radio\'s keyboard with "Q7AB " (the owner wrote the rest)',
           any(e.startswith('kbd open "Q7AB"') for t, e in r.x), [e for t, e in r.x if 'kbd open' in e])
     check('reply_snr: the addressed station (receiver run as Q7AB) gets it as a message to itself', any('>' in m['flags'] for m in rx.mlines()),
@@ -368,7 +369,7 @@ def part_loopback():
           'frames per period: %s; notes: %s' % (' '.join('%s:%d' % (p, sum(1 for x in r.rlines() if x['utc'].endswith(p))) for p in ('T120000', 'T120015', 'T120030', 'T120045', 'T120100')),
                                                 '; '.join(r.notes())))
     r2 = loopback('reply_hb_ack', '', 'Q7AB HEARTBEAT SNR -11', 'OK1BT: Q7AB HEARTBEAT SNR -11', wav=MIX,
-                  owner='20 tap 1100 Q7AB;25 kbd Q7AB HEARTBEAT SNR -11;27 arm', tail=30)[0]
+                  owner='20 tap Q7AB: @HB;25 kbd Q7AB HEARTBEAT SNR -11;27 arm', tail=30)[0]
     # fixed offset from the config
     r3 = loopback('offset_cfg', 'TX> HB', 'HB JO70', 'OK1BT: @HB HEARTBEAT JO70', cfg='txf=2125')[0]
     check('offset_cfg: txf=2125 -> the frame is at 2125 Hz', [x['f0'] for x in r3.tlines()] == [2125] and all(f['f0'] == 2125 for f in txchk(r3.wav)))
@@ -426,8 +427,8 @@ def part_strategies():
     check('strategy A on a loader that refuses the next slot (PERM): no retry storm - 1 frame, tx_begin calls = 1 ok + 1 refused; the disarm drops the held rest (S1 24 Nov 2026)',
           ok and len(fr) == 1 and r.s('txmodel.begin') == 2 and perm == 1 and any('disarmed, waiting messages dropped' in n for n in r.notes()),
           'frames %d, tx_begin %s, PERM %d | %s' % (len(fr), r.s('txmodel.begin'), perm, det))
-    check('strategy A on such a loader: the message waits ("arm needed for frame k/n", also a DECODE row) and does NOT continue after a disarm + arming',
-          any('arm needed for frame 2/' in n for n in r.notes()) and r.said('TX refused: arm needed for frame 2/') and r.said('TX: red frame off - message dropped'), '; '.join(r.notes()))
+    check('strategy A on such a loader: the message waits ("TX refused: part k/n - red frame again", also a DECODE row) and does NOT continue after a disarm + arming',
+          any('TX refused: part 2/' in n for n in r.notes()) and r.said('TX refused: part 2/') and r.said(' - red frame again') and r.said('TX: red frame off - message dropped'), '; '.join(r.notes()))
     # A with the loader's own session limit
     r = Run('strategy_a_loader_cap2', OWNER_STD % 'TX> Q7AB', cfg='tx1=' + L3, flags='on,cap=2', tail=150)
     fr = txchk(r.wav)
@@ -443,8 +444,8 @@ def part_strategies():
     rx = receive('tap_grant_rx', r.wav)
     check('tap grant: the frame decodes back as "OK1BT: @HB HEARTBEAT JO70"', [m['text'].rstrip() for m in rx.mlines()] == ['OK1BT: @HB HEARTBEAT JO70'])
     r = Run('tap_grant_multi', '3 taprow 0;4 kbd ' + L3, cfg='txtap=1', tail=60)
-    zero('tap credit: a message of %d frames is never sent on it - queued, "TX %d frames: long press within 2 min", nobody arms' % (n3, n3), r, 0,
-         r.s('txmodel.qtx') == 0 and r.said('TX %d frames: long press within 2 min' % n3), '@QTX asked %s' % r.s('txmodel.qtx'))
+    zero('tap credit: a message of %d frames is never sent on it - queued, "%d parts: MODE > hold FT8 (red), 2 min", nobody arms' % (n3, n3), r, 0,
+         r.s('txmodel.qtx') == 0 and r.said('%d parts: MODE > hold FT8 (red), 2 min' % n3), '@QTX asked %s' % r.s('txmodel.qtx'))
     r = Run('tap_grant_refused', '2 abort;3 taprow 0;4 kbd HB JO70', cfg='txtap=1', tail=40)
     zero('owner abort latched (S2 24 Nov 2026): the tap opens no keyboard ("TX: aborted - restart the app to send"), the tap credit is never asked', r, 0,
          r.s('txmodel.qtx') == 0 and r.said('TX: aborted - restart the app to send') and not r.xs('kbd open'), '@QTX asked %s' % r.s('txmodel.qtx'))
@@ -467,17 +468,17 @@ def part_strategies():
 def part_safety():
     sel = '3 tap JS8 TX;5 tap TX> HB;8 tap SEND?'
     r = Run('s_not_armed', sel, tail=150)
-    zero('not armed (request confirmed, beacon never armed, 150 s)', r, 0, (r.said('TX queued') or r.said('long press within')) and any('TX expired' in n for n in r.notes()), 'notes: ' + '; '.join(r.notes()))
+    zero('not armed (request confirmed, beacon never armed, 150 s)', r, 0, (r.said('TX queued') or r.said('MODE > hold FT8 (red), 2 min')) and any('TX expired' in n for n in r.notes()), 'notes: ' + '; '.join(r.notes()))
     # every gesture but the confirm: 1x, 3x (cancel with nothing queued), items selected and left with 3x, a confirm gesture begun too early
     # (0.3 s after the SEND? screen appeared), taps on decoded rows and on rows that read like the old menu (only their number counts)
     # every way to open and leave the keyboard without an ENT on a text: EXIT, an empty ENT (the cancel), taps while it is open,
     # rows that read like the old menu, several taps in a row
-    own = ('2 arm;18 tap 1100 Q7AB;20 kbdexit;22 taprow 0;24 kbd;26 tapraw SEND? HB JO70;27 tapraw TX> EVIL TEXT;29 kbdexit;31 g 3;33 kbdexit;'
-           '35 tap 700;37 g 2;39 kbdexit;41 tap 2300;43 kbd')
+    own = ('2 arm;18 tap Q7AB: @HB;20 kbdexit;22 taprow 0;24 kbd;26 tapraw SEND? HB JO70;27 tapraw TX> EVIL TEXT;29 kbdexit;31 g 3;33 kbdexit;'
+           '35 tap Q2XYZ:;37 g 2;39 kbdexit;41 tap TESTING 1 2 3;43 kbd')
     r = Run('s_no_request', own, wav=MIX, flags='on,tapsarmed', tail=120, cfg='tx1=' + L3)
     opens = [e for t, e in r.x if e.startswith('kbd open')]
     zero('armed, the keyboard opened 6 times and left without an ENT on a text (EXIT, empty ENT, forged rows, taps while open) - never a request; 195 s armed', r, 0,
-         r.s('owner.tap_miss') == 0 and not r.said('TX queued') and not r.said('long press within') and not r.said('TX replaced') and len(opens) == 6 and r.s('owner.taps', 0) >= 10,
+         r.s('owner.tap_miss') == 0 and not r.said('TX queued') and not r.said('MODE > hold FT8') and not r.said('replaced') and not r.said('SENT') and len(opens) == 6 and r.s('owner.taps', 0) >= 10,
          'taps delivered %s, keyboard opened %d times' % (r.s('owner.taps'), len(opens)))
     r = Run('s_armed_idle', '1 arm', wav=MIX, loops=4, tail=30)
     zero('armed with an empty queue for 330 s of receive traffic', r, 0, r.s('app.frames', 0) > 20, 'frames received meanwhile: %s' % r.s('app.frames'))
@@ -515,11 +516,11 @@ def part_safety():
     r = Run('s_queue_cap', own, tail=120)
     ok, det = r.clean()
     fr = txchk(r.wav)
-    check('SAFETY ONE waiting message (review 24 Nov 2026): 4 confirmed messages, each ENT replaces the waiting one ("TX replaced: long press sends 1 frame" x3) - exactly 1 frame goes out',
-          ok and len(fr) == 1 and r.d.count('TX replaced: long press sends 1 frame') == 3 and r.s('txmodel.begin') == 1 and r.s('txmodel.samples') == FRAME,
+    check('SAFETY ONE waiting message (review 24 Nov 2026): 4 confirmed messages, each ENT replaces the waiting one ("replaced: MODE > hold FT8 (red), 1 part" x3) - exactly 1 frame goes out',
+          ok and len(fr) == 1 and r.d.count('replaced: MODE > hold FT8 (red), 1 part') == 3 and r.s('txmodel.begin') == 1 and r.s('txmodel.samples') == FRAME,
           'frames %d, samples %s, tx_begin %s' % (len(fr), r.s('txmodel.samples'), r.s('txmodel.begin')))
     r = Run('s_queue_cap_zero', own.replace(';26 arm', ''), tail=30)
-    zero('4 messages confirmed (each replacing the last), not armed', r, 0, r.d.count('TX replaced: long press sends 1 frame') == 3)
+    zero('4 messages confirmed (each replacing the last), not armed', r, 0, r.d.count('replaced: MODE > hold FT8 (red), 1 part') == 3)
     own = ('3 tap JS8 TX;5 tap TX> HB;8 tap SEND?;9 arm;30 disarm;33 tap TX> HB;35 tap SEND?;37 arm;60 disarm;62 tap TX 1500;64 tap TX> HB;67 tap SEND?;'
            '69 tap TX> CQ;72 tap SEND?;74 tap TX> HB;76 tap SEND?;78 arm')
     r = Run('s_session_cap', own, cfg='txsess=2', tail=120)
@@ -531,7 +532,7 @@ def part_safety():
     r = Run('s_session_cap_multi', OWNER_STD % 'TX> Q7AB', cfg='txsess=2\ntx1=' + L3, tail=60)
     zero('session cap exceeded (3-frame message with txsess=2 is refused as a whole)', r, 0, r.said('TX refused: session cap'))
     r = Run('s_frame_cap', OWNER_STD % 'TX> Q7AB', cfg='txmaxf=2\ntx1=' + L3, tail=60)
-    zero('frames-per-action cap exceeded (3-frame message with txmaxf=2)', r, 0, r.said('TX refused: too many frames'))
+    zero('frames-per-action cap exceeded (3-frame message with txmaxf=2)', r, 0, r.said('TX refused: too many parts'))
     # malformed
     r = Run('s_malformed_char', OWNER_STD % 'TX> HELLO', cfg='txjsc=0\ntx1=hello: world', tail=60)
     zero('malformed message (":" cannot be encoded without the dictionary)', r, 0, r.said('TX refused: text not encodable'))
@@ -567,7 +568,7 @@ def part_safety():
     r = Run('s_taps_while_armed', '2 arm;3 tap JS8 TX;5 tap TX> HB;8 tap SEND?', tail=60)
     zero('taps are not delivered while the beacon is armed (loader default per SDK README)', r, 0, r.s('owner.taps') == 0 and r.s('owner.taps_not_delivered') >= 1, 'taps delivered %s' % r.s('owner.taps'))
     # the RX-only flavour never calls TX, whatever the owner does
-    r = Run('s_rx_flavour', '1 arm;3 tap 1100;5 tap TX> HB;8 tap SEND?', wav=MIX, flags='on,tapsarmed', rxonly=True, tail=30)
+    r = Run('s_rx_flavour', '1 arm;3 tap Q7AB: @HB;5 tap TX> HB;8 tap SEND?', wav=MIX, flags='on,tapsarmed', rxonly=True, tail=30)
     check('SAFETY RX-only flavour (JS8.APP) with the beacon armed and taps: no tx call of any kind, no keyboard', r.rc == 0 and r.s('decode_out.tx_calls') == 0 and
           r.s('txmodel.begin') == 0 and not any(l.startswith(('TX', 'JS8 TX')) for l in r.d) and not r.xs('kbd open'), 'tx_calls=%s' % r.s('decode_out.tx_calls'))
 
@@ -725,9 +726,10 @@ def results(r):
     return out
 
 
-def decrows(d):
-    """the decoded rows of a DECODE screen ("HHMM sNN FFFF ..." and continuations), without the menu block"""
-    return [l for l in d if re.match(r'^(\d{4} [+-]\d\d [ \d]{4} |     )', l)]
+def decrows(r):
+    """the decoded rows of a run's DECODE screen ("HHMM [m ]TEXT" and continuations, found by the Q lines: tests/decrows.py),
+    without status rows and views"""
+    return DR.decoded(r.out.splitlines())
 
 
 def part_rx_same():
@@ -743,7 +745,7 @@ def part_rx_same():
     with ThreadPoolExecutor(max_workers=6) as ex:
         for nm, a, b in ex.map(one, jobs):
             frames += a.s('app.frames', 0)
-            if decrows(a.d) != decrows(b.d) or a.s('app.frames') != b.s('app.frames') or a.s('app.msgs') != b.s('app.msgs') or b.s('decode_out.tx_calls') != 0 or a.rc or b.rc or \
+            if decrows(a) != decrows(b) or not decrows(a) and a.s('app.frames') or a.s('app.frames') != b.s('app.frames') or a.s('app.msgs') != b.s('app.msgs') or b.s('decode_out.tx_calls') != 0 or a.rc or b.rc or \
                a.log('JS8MSG.TXT') != b.log('JS8MSG.TXT') or a.log() != b.log():
                 diff.append(nm)
     # STREAMING FRONT END AND TX.  The decoder's FFT runs outside js8_decode() only inside js8_stream_put(), which only the
